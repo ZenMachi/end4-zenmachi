@@ -26,31 +26,30 @@ ShellRoot {
     Connections {
         target: Config
         function onReadyChanged() {
-            if (!Config.ready) return
-
+            if (!Config.ready)
+                return;
             if (WM.compositor === "niri") {
-                Config.options.background.lockWall = ""
-                Config.options.overview.enable = false
+                Config.options.background.lockWall = "";
+                Config.options.overview.enable = false;
             }
 
-            if (Config.options.hyprland.autostartApps.enable &&
-                Config.options.hyprland.autostartApps.apps.length > 0) {
-                autostartProc.running = true
+            if (Config.options.hyprland.autostartApps.enable && Config.options.hyprland.autostartApps.apps.length > 0) {
+                autostartProc.running = true;
             }
         }
     }
 
     Component.onCompleted: {
-        MaterialThemeLoader.reapplyTheme()
-        Hyprsunset.load()
-        FirstRunExperience.load()
-        ConflictKiller.load()
-        Cliphist.refresh()
-        Wallpapers.load()
-        Updates.load()
-        LyricsService.restartLyrics()
+        MaterialThemeLoader.reapplyTheme();
+        Hyprsunset.load();
+        FirstRunExperience.load();
+        ConflictKiller.load();
+        Cliphist.refresh();
+        Wallpapers.load();
+        Updates.load();
+        LyricsService.restartLyrics();
     }
-    
+
     PanelFamilyLoader {
         identifier: "ii"
         component: IllogicalImpulseFamily {}

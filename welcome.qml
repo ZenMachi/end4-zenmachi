@@ -32,7 +32,7 @@ ApplicationWindow {
 
     Component.onCompleted: {
         MaterialThemeLoader.reapplyTheme();
-        Config.readWriteDelay = 0 // Welcome app always only sets one var at a time so delay isn't needed
+        Config.readWriteDelay = 0; // Welcome app always only sets one var at a time so delay isn't needed
     }
 
     minimumWidth: 600
@@ -173,7 +173,7 @@ ApplicationWindow {
 
                     ContentSubsection {
                         title: Translation.tr("Generate translation with Gemini")
-                        
+
                         ConfigRow {
                             MaterialTextArea {
                                 id: localeInput

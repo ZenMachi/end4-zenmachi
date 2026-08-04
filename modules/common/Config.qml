@@ -48,7 +48,7 @@ Singleton {
         interval: root.readWriteDelay
         repeat: false
         onTriggered: {
-            configFileView.reload()
+            configFileView.reload();
         }
     }
 
@@ -57,7 +57,7 @@ Singleton {
         interval: root.readWriteDelay
         repeat: false
         onTriggered: {
-            configFileView.writeAdapter()
+            configFileView.writeAdapter();
         }
     }
 
@@ -90,12 +90,16 @@ Singleton {
                 property string tool: "functions" // search, functions, or none
                 property list<var> extraModels: [
                     {
-                        "api_format": "openai", // Most of the time you want "openai". Use "gemini" for Google's models
+                        "api_format": "openai" // Most of the time you want "openai". Use "gemini" for Google's models
+                        ,
                         "description": "This is a custom model. Edit the config to add more! | Anyway, this is DeepSeek R1 Distill LLaMA 70B",
                         "endpoint": "https://openrouter.ai/api/v1/chat/completions",
-                        "homepage": "https://openrouter.ai/deepseek/deepseek-r1-distill-llama-70b:free", // Not mandatory
-                        "icon": "spark-symbolic", // Not mandatory
-                        "key_get_link": "https://openrouter.ai/settings/keys", // Not mandatory
+                        "homepage": "https://openrouter.ai/deepseek/deepseek-r1-distill-llama-70b:free" // Not mandatory
+                        ,
+                        "icon": "spark-symbolic" // Not mandatory
+                        ,
+                        "key_get_link": "https://openrouter.ai/settings/keys" // Not mandatory
+                        ,
                         "key_id": "openrouter",
                         "model": "deepseek/deepseek-r1-distill-llama-70b:free",
                         "name": "Custom: DS R1 Dstl. LLaMA 70B",
@@ -154,7 +158,6 @@ Singleton {
                 property string avatarPicture: ""
                 property string descriptionText: "::distro::"
                 property string displayName: ""
-
             }
 
             property JsonObject hyprland: JsonObject {
@@ -285,7 +288,7 @@ Singleton {
                         property string placementStrategy: "free"
                         property real x: 400
                         property real y: 100
-                        property string sizeMode: "2x2" 
+                        property string sizeMode: "2x2"
                     }
 
                     property JsonObject notes: JsonObject {
@@ -300,6 +303,18 @@ Singleton {
                         property string placementStrategy: "free"
                         property real x: 400
                         property real y: 100
+                    }
+
+                    property JsonObject cheatsheet: JsonObject {
+                        property string superKey: ""
+                        property bool useMacSymbol: false
+                        property bool splitButtons: false
+                        property bool useMouseSymbol: false
+                        property bool useFnSymbol: false
+                        property JsonObject fontSize: JsonObject {
+                            property int key: Appearance.font.pixelSize.smaller
+                            property int comment: Appearance.font.pixelSize.smaller
+                        }
                     }
 
                     property JsonObject images: JsonObject {
@@ -345,7 +360,7 @@ Singleton {
                         property real y: 500
                     }
                 }
-                property list<string> screenList: [] 
+                property list<string> screenList: []
                 property string wallpaperPath: ""
                 property bool centeredWallpaper: false
                 property string centeredWallpaperShape: "Cookie7Sided"
@@ -406,7 +421,7 @@ Singleton {
                     property list<string> middleLayout: ["clockWidget"]
                     property list<string> rightLayout: ["systemIcons"]
                 }
-                
+
                 property list<string> screenList: [] // List of names, like "eDP-1", find out with 'hyprctl monitors' command
                 property JsonObject utilButtons: JsonObject {
                     property bool showScreenSnip: true
@@ -416,7 +431,7 @@ Singleton {
                     property bool showWallpaperToggle: false
                     property bool showDarkModeToggle: true
                     property bool showPerformanceProfileToggle: false
-                    property bool showScreenRecord: false       
+                    property bool showScreenRecord: false
                     property bool isRecording: false
                 }
 
@@ -514,7 +529,7 @@ Singleton {
             }
 
             property JsonObject launcher: JsonObject {
-                property list<string> pinnedApps: [ "org.kde.dolphin", "kitty", "cmake-gui"]
+                property list<string> pinnedApps: ["org.kde.dolphin", "kitty", "cmake-gui"]
             }
 
             property JsonObject light: JsonObject {
@@ -625,7 +640,7 @@ Singleton {
                 property bool monochromeIcons: true
                 property bool showItemId: false
                 property bool invertPinnedItems: true // Makes the below a whitelist for the tray and blacklist for the pinned area
-                property list<var> pinnedItems: [ "Fcitx" ]
+                property list<var> pinnedItems: ["Fcitx"]
                 property bool filterPassive: true
             }
 
@@ -670,7 +685,7 @@ Singleton {
                     property bool enable: true
                     property bool artColors: false
                 }
-                
+
                 property JsonObject ai: JsonObject {
                     property bool textFadeIn: false
                 }
@@ -699,12 +714,30 @@ Singleton {
                     property JsonObject android: JsonObject {
                         property int columns: 5
                         property list<var> toggles: [
-                            { "size": 2, "type": "network" },
-                            { "size": 2, "type": "bluetooth"  },
-                            { "size": 1, "type": "idleInhibitor" },
-                            { "size": 1, "type": "mic" },
-                            { "size": 2, "type": "audio" },
-                            { "size": 2, "type": "nightLight" }
+                            {
+                                "size": 2,
+                                "type": "network"
+                            },
+                            {
+                                "size": 2,
+                                "type": "bluetooth"
+                            },
+                            {
+                                "size": 1,
+                                "type": "idleInhibitor"
+                            },
+                            {
+                                "size": 1,
+                                "type": "mic"
+                            },
+                            {
+                                "size": 2,
+                                "type": "audio"
+                            },
+                            {
+                                "size": 2,
+                                "type": "nightLight"
+                            }
                         ]
                     }
                 }
@@ -723,7 +756,7 @@ Singleton {
             }
 
             property JsonObject screenRecord: JsonObject {
-                property string savePath: Directories.videos.replace("file://","") // strip "file://"
+                property string savePath: Directories.videos.replace("file://", "") // strip "file://"
             }
 
             property JsonObject screenSnip: JsonObject {
@@ -758,7 +791,7 @@ Singleton {
                 property int adviseUpdateThreshold: 75 // packages
                 property int stronglyAdviseUpdateThreshold: 200 // packages
             }
-            
+
             property JsonObject wallpaperSelector: JsonObject {
                 property bool useSystemFileDialog: false
                 property bool showBlurBackground: false
@@ -768,7 +801,7 @@ Singleton {
                 property bool showSearchbar: true
                 property int columns: 4
                 property bool closeAfterSelection: true
-                property int changeInterval: 0 
+                property int changeInterval: 0
             }
 
             property JsonObject windows: JsonObject {

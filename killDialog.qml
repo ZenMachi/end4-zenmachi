@@ -29,7 +29,7 @@ ApplicationWindow {
     property real contentPadding: 8
     visible: true
     onClosing: {
-        Qt.quit()
+        Qt.quit();
     }
     title: Translation.tr("Shell conflicts killer")
 
@@ -53,17 +53,17 @@ ApplicationWindow {
         required property string description
         visible: false
         onVisibleChanged: {
-            conflictCount += visible ? 1 : -1
+            conflictCount += visible ? 1 : -1;
         }
 
-        signal alwaysSelected()
+        signal alwaysSelected
 
         Process {
             running: true
             command: ["pidof", ...conflictGroup.programs]
             onExited: (exitCode, exitStatus) => {
                 if (exitCode === 0) {
-                    conflictGroup.visible = true
+                    conflictGroup.visible = true;
                 }
             }
         }
@@ -89,9 +89,9 @@ ApplicationWindow {
                     text: Translation.tr("Always")
                 }
                 onClicked: {
-                    Quickshell.execDetached(["killall", ...conflictGroup.programs])
-                    conflictGroup.alwaysSelected()
-                    conflictGroup.visible = false
+                    Quickshell.execDetached(["killall", ...conflictGroup.programs]);
+                    conflictGroup.alwaysSelected();
+                    conflictGroup.visible = false;
                 }
             }
             RippleButton {
@@ -100,8 +100,8 @@ ApplicationWindow {
                     text: Translation.tr("Yes")
                 }
                 onClicked: {
-                    Quickshell.execDetached(["killall", ...conflictGroup.programs])
-                    conflictGroup.visible = false
+                    Quickshell.execDetached(["killall", ...conflictGroup.programs]);
+                    conflictGroup.visible = false;
                 }
             }
             RippleButton {
@@ -190,7 +190,6 @@ ApplicationWindow {
                     description: Translation.tr("Conflicts with the shell's notification implementation")
                     onAlwaysSelected: Config.options.conflictKiller.autoKillNotificationDaemons = true
                 }
-                
             }
         }
     }
