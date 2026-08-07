@@ -103,7 +103,7 @@ Scope {
 
                 Behavior on y {
                     NumberAnimation {
-                        duration: GlobalStates.wallpaperSelectorOpen
+                        duration: WM.compositor === "niri"
                             ? Appearance.animation.sidebarSlideEnter.duration
                             : Appearance.animation.sidebarSlideExit.duration
                         easing.type: GlobalStates.wallpaperSelectorOpen
