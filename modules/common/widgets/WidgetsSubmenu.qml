@@ -72,6 +72,11 @@ Item {
             icon: "devices",
             name: Translation.tr("Connected Devices")
         },
+        {
+            key: "screentime",
+            icon: "schedule",
+            name: Translation.tr("Screen Time")
+        },
     ]
 
     Rectangle {
