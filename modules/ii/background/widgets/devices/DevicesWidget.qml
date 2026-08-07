@@ -79,15 +79,15 @@ AbstractBackgroundWidget {
 
     function getDeviceColor(connected, battery, charging) {
         if (!connected) {
-            return Appearance.colors.colSubtext;
+            return ColorUtils.mix(Appearance.colors.colOnPrimaryContainer, Appearance.colors.colPrimaryContainer, 0.4);
         }
         if (charging) {
             return "#39d353"; // Green when charging
         }
         if (battery !== null) {
-            return battery < 20 ? "#f44336" : Appearance.colors.colSecondaryContainer;
+            return battery < 20 ? "#f44336" : Appearance.colors.colOnPrimaryContainer;
         }
-        return Appearance.colors.colSecondaryContainer;
+        return Appearance.colors.colOnPrimaryContainer;
     }
 
     Process {
@@ -149,7 +149,7 @@ AbstractBackgroundWidget {
         id: card
         anchors.fill: parent
         radius: Appearance.rounding?.verylarge ?? 24
-        color: Appearance.colors.colLayer0
+        color: Appearance.colors.colPrimaryContainer // Matched to World Clock base
 
         StyledRectangularShadow {
             target: card
@@ -173,14 +173,15 @@ AbstractBackgroundWidget {
                 MaterialSymbol {
                     text: "devices"
                     iconSize: 18
-                    color: Appearance.colors.colOnLayer0
+                    color: Appearance.colors.colOnPrimaryContainer // Changed to contrast primary
+                    opacity: 0.6 // Matched to location icon opacity in Clock
                 }
 
                 StyledText {
                     text: "Devices"
                     font.pixelSize: 14
                     font.weight: Font.DemiBold
-                    color: Appearance.colors.colOnLayer0
+                    color: Appearance.colors.colOnPrimaryContainer
                     Layout.fillWidth: true
                 }
 
@@ -206,7 +207,8 @@ AbstractBackgroundWidget {
                     anchors.centerIn: parent
                     text: "No devices connected"
                     font.pixelSize: 12
-                    color: Appearance.colors.colSubtext
+                    color: Appearance.colors.colOnPrimaryContainer
+                    opacity: 0.7
                     visible: !root.loading && root.devicesList.length === 0
                 }
 
@@ -236,7 +238,7 @@ AbstractBackgroundWidget {
                                     value: modelData.connected ? (modelData.battery !== null ? modelData.battery / 100 : 1.0) : 1.0
                                     gapAngle: 0
                                     colPrimary: root.getDeviceColor(modelData.connected, modelData.battery, modelData.charging)
-                                    colSecondary: ColorUtils.mix(Appearance.colors.colOnLayer0, Appearance.colors.colLayer0, 0.12)
+                                    colSecondary: ColorUtils.mix(Appearance.colors.colOnPrimaryContainer, Appearance.colors.colPrimaryContainer, 0.12)
                                 }
 
                                 MaterialSymbol {
@@ -256,7 +258,7 @@ AbstractBackgroundWidget {
                                     text: modelData.name
                                     font.pixelSize: 13
                                     font.weight: Font.DemiBold
-                                    color: Appearance.colors.colOnLayer0
+                                    color: Appearance.colors.colOnPrimaryContainer
                                     Layout.fillWidth: true
                                     elide: Text.ElideRight
                                 }
@@ -264,7 +266,8 @@ AbstractBackgroundWidget {
                                 StyledText {
                                     text: root.getDeviceSubtitle(modelData)
                                     font.pixelSize: 11
-                                    color: Appearance.colors.colSubtext
+                                    color: Appearance.colors.colOnPrimaryContainer
+                                    opacity: 0.7 // Imitating colSubtext against primary
                                     Layout.fillWidth: true
                                     elide: Text.ElideRight
                                 }
@@ -275,7 +278,7 @@ AbstractBackgroundWidget {
                                 text: modelData.battery !== null ? modelData.battery + "%" : (modelData.connected ? "On" : "Off")
                                 font.pixelSize: 13
                                 font.weight: Font.Medium
-                                color: modelData.battery !== null && modelData.battery < 20 ? "#f44336" : Appearance.colors.colOnLayer0
+                                color: modelData.battery !== null && modelData.battery < 20 ? "#f44336" : Appearance.colors.colOnPrimaryContainer
                             }
                         }
                     }
@@ -296,7 +299,8 @@ AbstractBackgroundWidget {
             MaterialSymbol {
                 text: "devices"
                 iconSize: 22
-                color: Appearance.colors.colOnLayer0
+                color: Appearance.colors.colOnPrimaryContainer
+                opacity: 0.6
             }
 
             // Divider Line
@@ -305,8 +309,8 @@ AbstractBackgroundWidget {
                 Layout.fillHeight: true
                 Layout.topMargin: 4
                 Layout.bottomMargin: 4
-                color: Appearance.colors.colLayer0Border
-                opacity: 0.4
+                color: Appearance.colors.colOnPrimaryContainer
+                opacity: 0.2
             }
 
             // Expanded Horizontal Devices Row
@@ -334,7 +338,7 @@ AbstractBackgroundWidget {
                                 value: modelData.connected ? (modelData.battery !== null ? modelData.battery / 100 : 1.0) : 1.0
                                 gapAngle: 0
                                 colPrimary: root.getDeviceColor(modelData.connected, modelData.battery, modelData.charging)
-                                colSecondary: ColorUtils.mix(Appearance.colors.colOnLayer0, Appearance.colors.colLayer0, 0.12)
+                                colSecondary: ColorUtils.mix(Appearance.colors.colOnPrimaryContainer, Appearance.colors.colPrimaryContainer, 0.12)
                             }
 
                             MaterialSymbol {
@@ -354,7 +358,7 @@ AbstractBackgroundWidget {
                                 text: modelData.name
                                 font.pixelSize: 12
                                 font.weight: Font.DemiBold
-                                color: Appearance.colors.colOnLayer0
+                                color: Appearance.colors.colOnPrimaryContainer
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
                             }
@@ -362,7 +366,8 @@ AbstractBackgroundWidget {
                             StyledText {
                                 text: modelData.battery !== null ? modelData.battery + "%" + (modelData.charging ? " • Charging" : "") : "Connected"
                                 font.pixelSize: 11
-                                color: Appearance.colors.colSubtext
+                                color: Appearance.colors.colOnPrimaryContainer
+                                opacity: 0.7
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
                             }
