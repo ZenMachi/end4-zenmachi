@@ -13,9 +13,7 @@ Item {
     id: root
     implicitHeight: col.implicitHeight
 
-    readonly property var shapeOptions: [
-        "Circle", "Square", "Cookie12Sided", "Clover4Leaf", "Pill", "Heart"
-    ]
+    readonly property var shapeOptions: ["Circle", "Square", "Cookie12Sided", "Clover4Leaf", "Pill", "Heart"]
 
     ColumnLayout {
         id: col
@@ -31,7 +29,12 @@ Item {
 
             GridLayout {
                 id: schemeGrid
-                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                    margins: 10
+                }
                 columns: 3
                 rowSpacing: 6
                 columnSpacing: 6
@@ -39,15 +42,51 @@ Item {
                 Repeater {
                     id: schemeRepeater
                     model: [
-                        { value: "auto",               displayName: Translation.tr("Auto"),         icon: "auto_awesome" },
-                        { value: "scheme-content",      displayName: Translation.tr("Content"),      icon: "image" },
-                        { value: "scheme-expressive",   displayName: Translation.tr("Expressive"),   icon: "palette" },
-                        { value: "scheme-fidelity",     displayName: Translation.tr("Fidelity"),     icon: "equal" },
-                        { value: "scheme-fruit-salad",  displayName: Translation.tr("Fruit Salad"),  icon: "nutrition" },
-                        { value: "scheme-monochrome",   displayName: Translation.tr("Monochrome"),   icon: "invert_colors" },
-                        { value: "scheme-neutral",      displayName: Translation.tr("Neutral"),      icon: "tonality" },
-                        { value: "scheme-rainbow",      displayName: Translation.tr("Rainbow"),      icon: "gradient" },
-                        { value: "scheme-tonal-spot",   displayName: Translation.tr("Tonal Spot"),   icon: "lens" },
+                        {
+                            value: "auto",
+                            displayName: Translation.tr("Auto"),
+                            icon: "auto_awesome"
+                        },
+                        {
+                            value: "scheme-content",
+                            displayName: Translation.tr("Content"),
+                            icon: "image"
+                        },
+                        {
+                            value: "scheme-expressive",
+                            displayName: Translation.tr("Expressive"),
+                            icon: "palette"
+                        },
+                        {
+                            value: "scheme-fidelity",
+                            displayName: Translation.tr("Fidelity"),
+                            icon: "equal"
+                        },
+                        {
+                            value: "scheme-fruit-salad",
+                            displayName: Translation.tr("Fruit Salad"),
+                            icon: "nutrition"
+                        },
+                        {
+                            value: "scheme-monochrome",
+                            displayName: Translation.tr("Monochrome"),
+                            icon: "invert_colors"
+                        },
+                        {
+                            value: "scheme-neutral",
+                            displayName: Translation.tr("Neutral"),
+                            icon: "tonality"
+                        },
+                        {
+                            value: "scheme-rainbow",
+                            displayName: Translation.tr("Rainbow"),
+                            icon: "gradient"
+                        },
+                        {
+                            value: "scheme-tonal-spot",
+                            displayName: Translation.tr("Tonal Spot"),
+                            icon: "lens"
+                        },
                     ]
 
                     delegate: Rectangle {
@@ -79,9 +118,7 @@ Item {
                         bottomLeftRadius: isBottomLeft ? Appearance.rounding.verylarge : ownRadius
                         bottomRightRadius: isBottomRight ? Appearance.rounding.verylarge : ownRadius
 
-                        color: isSelected ? Appearance.colors.colPrimary
-                            : hovered ? Appearance.colors.colSecondaryContainerHover
-                            : Appearance.colors.colSecondaryContainer
+                        color: isSelected ? Appearance.colors.colPrimary : hovered ? Appearance.colors.colSecondaryContainerHover : Appearance.colors.colSecondaryContainer
 
                         Behavior on ownRadius {
                             animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
@@ -103,8 +140,8 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                Config.options.appearance.palette.type = schemeTile.modelData.value
-                                Quickshell.execDetached(["bash", "-c", `${Directories.wallpaperSwitchScriptPath} --noswitch`])
+                                Config.options.appearance.palette.type = schemeTile.modelData.value;
+                                Quickshell.execDetached(["bash", "-c", `${Directories.wallpaperSwitchScriptPath} --noswitch`]);
                             }
                         }
 
@@ -125,7 +162,10 @@ Item {
 
             ColumnLayout {
                 id: centeredCol
-                anchors { fill: parent; margins: 8 }
+                anchors {
+                    fill: parent
+                    margins: 8
+                }
                 spacing: 6
 
                 ConfigSwitch {
@@ -176,7 +216,7 @@ Item {
                     usePercentTooltip: false
                     buttonIcon: "aspect_ratio"
                     from: 400
-                    to: 800
+                    to: 2000
                     stopIndicatorValues: [400]
                     onValueChanged: Config.options.background.centeredWallpaperSize = value
                 }
@@ -192,14 +232,33 @@ Item {
 
             ColumnLayout {
                 id: transCol
-                anchors { fill: parent; margins: 8 }
+                anchors {
+                    fill: parent
+                    margins: 8
+                }
 
                 Repeater {
                     model: [
-                        { displayName: Translation.tr("Disable"),    icon: "block",        value: "" },
-                        { displayName: Translation.tr("Magic"),   icon: "auto_awesome", value: "magic" },
-                        { displayName: Translation.tr("Stripes"), icon: "texture_minus", value: "stripes" },
-                        { displayName: Translation.tr("Random"),  icon: "shuffle",      value: "random" },
+                        {
+                            displayName: Translation.tr("Disable"),
+                            icon: "block",
+                            value: ""
+                        },
+                        {
+                            displayName: Translation.tr("Magic"),
+                            icon: "auto_awesome",
+                            value: "magic"
+                        },
+                        {
+                            displayName: Translation.tr("Stripes"),
+                            icon: "texture_minus",
+                            value: "stripes"
+                        },
+                        {
+                            displayName: Translation.tr("Random"),
+                            icon: "shuffle",
+                            value: "random"
+                        },
                     ]
                     delegate: RippleButton {
                         id: transRow
@@ -215,7 +274,11 @@ Item {
                         colRippleToggled: Appearance.colors.colSecondaryContainerActive
                         onClicked: Config.options.background.wallpaperAnimation = transRow.modelData.value
                         contentItem: RowLayout {
-                            anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
+                            anchors {
+                                fill: parent
+                                leftMargin: 12
+                                rightMargin: 12
+                            }
                             spacing: 12
                             MaterialSymbol {
                                 text: transRow.modelData.icon

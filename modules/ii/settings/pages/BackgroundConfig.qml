@@ -329,7 +329,7 @@ ContentPage {
                         usePercentTooltip: false
                         buttonIcon: "aspect_ratio"
                         from: 400
-                        to: 800
+                        to: 2000
                         stopIndicatorValues: [400]
                         onValueChanged: {
                             Config.options.background.centeredWallpaperSize = value;
