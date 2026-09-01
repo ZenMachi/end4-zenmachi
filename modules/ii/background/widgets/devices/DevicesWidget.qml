@@ -1,7 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 import Quickshell.Io
 import Quickshell
+import Quickshell.Wayland
 import qs
 import qs.services
 import qs.modules.common
@@ -34,7 +36,29 @@ AbstractBackgroundWidget {
     }
 
     property var devicesList: []
+    property list<string> deviceErrors: []
     property bool loading: true
+    property bool allDevicesOpen: false
+    readonly property int activeWorkspaceId: WM.activeWorkspaceForMonitor(root.QsWindow?.screen?.name ?? "")?.id ?? 0
+
+    onActiveWorkspaceIdChanged: root.allDevicesOpen = false
+
+    Connections {
+        target: WM
+        function onActiveWorkspaceChanged() { root.allDevicesOpen = false }
+    }
+
+    function batteryColor(dev) {
+        if (!dev.connected)
+            return ColorUtils.mix(Appearance.colors.colOnPrimaryContainer, Appearance.colors.colPrimaryContainer, 0.4);
+        if (dev.charging)
+            return "#39d353";
+        if (dev.battery !== null && dev.battery < 20)
+            return "#f44336";
+        if (dev.battery !== null && dev.battery < 40)
+            return "#ffb300";
+        return Appearance.colors.colOnPrimaryContainer;
+    }
 
     function refreshDevices() {
         if (devicesProc.running) {
@@ -100,10 +124,15 @@ AbstractBackgroundWidget {
                 const output = devicesOutputCollector.text.trim();
                 if (output) {
                     try {
-                        root.devicesList = JSON.parse(output);
+                        const parsed = JSON.parse(output);
+                        root.devicesList = Array.isArray(parsed) ? parsed : (parsed.devices ?? []);
+                        root.deviceErrors = Array.isArray(parsed) ? [] : (parsed.errors ?? []);
                     } catch (e) {
+                        root.deviceErrors = ["Unable to read device data"];
                         console.log("[DevicesWidget] Error parsing JSON:", e);
                     }
+                } else {
+                    root.deviceErrors = ["Device services unavailable"];
                 }
                 root.loading = false;
             }
@@ -185,11 +214,51 @@ AbstractBackgroundWidget {
                     Layout.fillWidth: true
                 }
 
+                StyledText {
+                    text: root.devicesList.length > 0 ? root.devicesList.length : ""
+                    font.pixelSize: 11
+                    color: Appearance.colors.colOnPrimaryContainer
+                    opacity: 0.7
+                }
+
                 Rectangle {
-                    width: 8
-                    height: 3
-                    radius: 1.5
-                    color: "#39d353"
+                    width: 24
+                    height: 24
+                    radius: 12
+                    color: allDevicesArea.containsMouse ? Appearance.colors.colPrimary : "transparent"
+                    MaterialSymbol {
+                        anchors.centerIn: parent
+                        text: "list"
+                        iconSize: 16
+                        color: allDevicesArea.containsMouse ? Appearance.colors.colOnPrimary : Appearance.colors.colOnPrimaryContainer
+                    }
+                    MouseArea {
+                        id: allDevicesArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.allDevicesOpen = !root.allDevicesOpen
+                    }
+                }
+
+                Rectangle {
+                    width: 24
+                    height: 24
+                    radius: 12
+                    color: refreshArea.containsMouse ? Appearance.colors.colPrimary : "transparent"
+                    MaterialSymbol {
+                        anchors.centerIn: parent
+                        text: "refresh"
+                        iconSize: 16
+                        color: refreshArea.containsMouse ? Appearance.colors.colOnPrimary : Appearance.colors.colOnPrimaryContainer
+                    }
+                    MouseArea {
+                        id: refreshArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.refreshDevices()
+                    }
                 }
             }
 
@@ -205,10 +274,12 @@ AbstractBackgroundWidget {
 
                 StyledText {
                     anchors.centerIn: parent
-                    text: "No devices connected"
+                    text: root.deviceErrors.length > 0 ? root.deviceErrors[0] : "No devices detected"
                     font.pixelSize: 12
                     color: Appearance.colors.colOnPrimaryContainer
                     opacity: 0.7
+                    wrapMode: Text.WordWrap
+                    horizontalAlignment: Text.AlignHCenter
                     visible: !root.loading && root.devicesList.length === 0
                 }
 
@@ -237,7 +308,7 @@ AbstractBackgroundWidget {
                                     lineWidth: 4
                                     value: modelData.connected ? (modelData.battery !== null ? modelData.battery / 100 : 1.0) : 1.0
                                     gapAngle: 0
-                                    colPrimary: root.getDeviceColor(modelData.connected, modelData.battery, modelData.charging)
+                                    colPrimary: root.batteryColor(modelData)
                                     colSecondary: ColorUtils.mix(Appearance.colors.colOnPrimaryContainer, Appearance.colors.colPrimaryContainer, 0.12)
                                 }
 
@@ -245,7 +316,7 @@ AbstractBackgroundWidget {
                                     anchors.centerIn: parent
                                     text: modelData.charging ? "bolt" : root.getDeviceIcon(modelData.type)
                                     iconSize: 16
-                                    color: root.getDeviceColor(modelData.connected, modelData.battery, modelData.charging)
+                                    color: root.batteryColor(modelData)
                                 }
                             }
 
@@ -263,9 +334,9 @@ AbstractBackgroundWidget {
                                     elide: Text.ElideRight
                                 }
 
-                                StyledText {
-                                    text: root.getDeviceSubtitle(modelData)
-                                    font.pixelSize: 11
+                            StyledText {
+                                text: root.getDeviceSubtitle(modelData) + " • " + (modelData.connection ?? "unknown")
+                                font.pixelSize: 11
                                     color: Appearance.colors.colOnPrimaryContainer
                                     opacity: 0.7 // Imitating colSubtext against primary
                                     Layout.fillWidth: true
@@ -303,6 +374,59 @@ AbstractBackgroundWidget {
                 opacity: 0.6
             }
 
+            Rectangle {
+                width: 28
+                height: 28
+                radius: 14
+                color: allDevicesArea1x4.containsMouse ? Appearance.colors.colPrimary : "transparent"
+
+                MaterialSymbol {
+                    anchors.centerIn: parent
+                    text: "list"
+                    iconSize: 20
+                    color: allDevicesArea1x4.containsMouse ? Appearance.colors.colOnPrimary : Appearance.colors.colOnPrimaryContainer
+                    opacity: 0.8
+                }
+
+                MouseArea {
+                    id: allDevicesArea1x4
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.allDevicesOpen = !root.allDevicesOpen
+                }
+            }
+
+            Rectangle {
+                width: 28
+                height: 28
+                radius: 14
+                color: refreshArea1x4.containsMouse ? Appearance.colors.colPrimary : "transparent"
+
+                MaterialSymbol {
+                    anchors.centerIn: parent
+                    text: "refresh"
+                    iconSize: 20
+                    color: refreshArea1x4.containsMouse ? Appearance.colors.colOnPrimary : Appearance.colors.colOnPrimaryContainer
+                    opacity: 0.8
+                }
+
+                MouseArea {
+                    id: refreshArea1x4
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.refreshDevices()
+                }
+            }
+
+            StyledText {
+                text: root.devicesList.length > 0 ? root.devicesList.length : ""
+                font.pixelSize: 11
+                color: Appearance.colors.colOnPrimaryContainer
+                opacity: 0.7
+            }
+
             // Divider Line
             Rectangle {
                 width: 1
@@ -317,59 +441,38 @@ AbstractBackgroundWidget {
             RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: 14
+                spacing: 0
 
                 Repeater {
                     model: root.devicesList.slice(0, 3)
-                    delegate: RowLayout {
+                    delegate: Item {
                         required property var modelData
                         Layout.fillWidth: true
-                        spacing: 10
+                        Layout.minimumWidth: 48
+                        Layout.fillHeight: true
 
                         // Circular Progress Ring
                         Item {
-                            width: 38
-                            height: 38
+                            Layout.alignment: Qt.AlignHCenter
+                            width: 42
+                            height: 42
+                            anchors.centerIn: parent
 
                             CircularProgress {
                                 anchors.centerIn: parent
-                                implicitSize: 38
-                                lineWidth: 3
+                                implicitSize: 42
+                                lineWidth: 4
                                 value: modelData.connected ? (modelData.battery !== null ? modelData.battery / 100 : 1.0) : 1.0
                                 gapAngle: 0
-                                colPrimary: root.getDeviceColor(modelData.connected, modelData.battery, modelData.charging)
+                                colPrimary: root.batteryColor(modelData)
                                 colSecondary: ColorUtils.mix(Appearance.colors.colOnPrimaryContainer, Appearance.colors.colPrimaryContainer, 0.12)
                             }
 
                             MaterialSymbol {
                                 anchors.centerIn: parent
                                 text: modelData.charging ? "bolt" : root.getDeviceIcon(modelData.type)
-                                iconSize: 15
-                                color: root.getDeviceColor(modelData.connected, modelData.battery, modelData.charging)
-                            }
-                        }
-
-                        // Device Details (Name & Subtitle/Battery)
-                        ColumnLayout {
-                            spacing: 0
-                            Layout.fillWidth: true
-
-                            StyledText {
-                                text: modelData.name
-                                font.pixelSize: 12
-                                font.weight: Font.DemiBold
-                                color: Appearance.colors.colOnPrimaryContainer
-                                elide: Text.ElideRight
-                                Layout.fillWidth: true
-                            }
-
-                            StyledText {
-                                text: modelData.battery !== null ? modelData.battery + "%" + (modelData.charging ? " • Charging" : "") : "Connected"
-                                font.pixelSize: 11
-                                color: Appearance.colors.colOnPrimaryContainer
-                                opacity: 0.7
-                                elide: Text.ElideRight
-                                Layout.fillWidth: true
+                                iconSize: 16
+                                color: root.batteryColor(modelData)
                             }
                         }
                     }
@@ -424,6 +527,159 @@ AbstractBackgroundWidget {
                 }
                 onReleased: {
                     root.configEntry.sizeMode = root.sizeMode;
+                }
+            }
+        }
+    }
+
+    PanelWindow {
+        id: allDevicesPopup
+        visible: root.allDevicesOpen
+        screen: root.QsWindow?.screen ?? null
+        color: "transparent"
+        exclusionMode: ExclusionMode.Ignore
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.namespace: "quickshell:popup:devices"
+        property real popupX: root.x + root.width / 2 - implicitWidth / 2
+        property real popupY: root.y + root.height + 10
+        anchors { left: true; top: true }
+        margins {
+            left: Math.max(10, Math.min(popupX, (root.QsWindow?.screen?.width ?? 1920) - implicitWidth - 10))
+            top: Math.max(10, Math.min(popupY, (root.QsWindow?.screen?.height ?? 1080) - implicitHeight - 10))
+        }
+        implicitWidth: 330
+        // Keep a usable viewport for the list instead of deriving the popup
+        // height from a fill-height Flickable.
+        implicitHeight: Math.min(520, 150 + Math.max(1, root.devicesList.length) * 60)
+
+        StyledRectangularShadow { target: allDevicesBackground }
+
+        Rectangle {
+            id: allDevicesBackground
+            anchors.fill: parent
+            radius: Appearance.rounding.large
+            color: Appearance.colors.colLayer1Base
+            border.width: 1
+            border.color: Appearance.colors.colLayer0Border
+
+            MouseArea { anchors.fill: parent }
+
+            ColumnLayout {
+                id: allDevicesColumn
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 10
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    MaterialSymbol {
+                        text: "devices_other"
+                        iconSize: 20
+                        color: Appearance.colors.colOnPrimaryContainer
+                    }
+                    StyledText {
+                        text: "All Devices (" + root.devicesList.length + ")"
+                        font.pixelSize: 16
+                        font.weight: Font.DemiBold
+                        color: Appearance.colors.colOnPrimaryContainer
+                        Layout.fillWidth: true
+                    }
+                    MaterialSymbol {
+                        text: "close"
+                        iconSize: 18
+                        color: Appearance.colors.colOnPrimaryContainer
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.allDevicesOpen = false
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 1
+                    color: Appearance.colors.colOnPrimaryContainer
+                    opacity: 0.12
+                }
+
+                StyledText {
+                    Layout.fillWidth: true
+                    text: root.devicesList.length === 0 ? "No devices detected" : "Showing all " + root.devicesList.length + " devices"
+                    font.pixelSize: 11
+                    color: Appearance.colors.colOnPrimaryContainer
+                    opacity: 0.65
+                }
+
+                StyledFlickable {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 54
+                    contentWidth: width
+                    contentHeight: allDevicesList.implicitHeight
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical.policy: ScrollBar.AlwaysOn
+
+                    ColumnLayout {
+                        id: allDevicesList
+                        width: parent.width
+                        spacing: 6
+
+                        Repeater {
+                            model: root.devicesList
+                            delegate: Rectangle {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                implicitHeight: 54
+                                radius: Appearance.rounding.normal
+                                color: deviceRowArea.containsMouse ? Appearance.colors.colLayer2 : "transparent"
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 6
+                                    spacing: 10
+
+                                    MaterialSymbol {
+                                        text: modelData.charging ? "bolt" : root.getDeviceIcon(modelData.type)
+                                        iconSize: 22
+                                        color: root.batteryColor(modelData)
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 1
+                                        StyledText {
+                                            text: modelData.name
+                                            font.pixelSize: 13
+                                            font.weight: Font.Medium
+                                            color: Appearance.colors.colOnPrimaryContainer
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
+                                        StyledText {
+                                            text: (modelData.connection ?? "unknown") + " • " + (modelData.connected ? "Connected" : "Disconnected")
+                                            font.pixelSize: 11
+                                            color: Appearance.colors.colOnPrimaryContainer
+                                            opacity: 0.65
+                                        }
+                                    }
+
+                                    StyledText {
+                                        text: modelData.battery !== null ? modelData.battery + "%" : (modelData.charging ? "Charging" : (modelData.connected ? "On" : "Off"))
+                                        font.pixelSize: 12
+                                        color: root.batteryColor(modelData)
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: deviceRowArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

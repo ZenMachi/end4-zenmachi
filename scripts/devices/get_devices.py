@@ -1,254 +1,164 @@
-
 #!/usr/bin/env python3
-import re
-import subprocess
 import json
 import os
+import re
+import shutil
+import subprocess
+from concurrent.futures import ThreadPoolExecutor
+
+COMMAND_TIMEOUT = 3
+
+
+def command_available(command):
+    return shutil.which(command) is not None
+
+
+def run_command(args, timeout=COMMAND_TIMEOUT):
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def device(name, stable_id, dev_type, connected, battery=None, charging=False, connection="unknown"):
+    return {
+        "id": stable_id,
+        "name": name or "Unknown device",
+        "type": dev_type or "unknown",
+        "connected": bool(connected),
+        "battery": battery,
+        "charging": bool(charging),
+        "connection": connection,
+    }
+
 
 def get_upower_devices():
+    if not command_available("upower"):
+        return [], "upower is not installed"
     devices = []
-    try:
-        out = subprocess.check_output(["upower", "-e"]).decode("utf-8")
-        for line in out.strip().split("\n"):
-            line = line.strip()
-            if not line or "battery_BAT" in line or "line_power_ACAD" in line or "DisplayDevice" in line:
-                continue
-            
-            info_out = subprocess.check_output(["upower", "-i", line]).decode("utf-8")
-            
-            model = None
-            dev_type = "unknown"
-            battery = None
-            connected = False
-            charging = False
-            
-            model_m = re.search(r"model:\s*(.*)", info_out)
-            if model_m:
-                model = model_m.group(1).strip()
-                
-            type_m = re.search(r"device-type:\s*(.*)", info_out)
-            if type_m:
-                dev_type = type_m.group(1).strip()
-                
-            percent_m = re.search(r"percentage:\s*(\d+)%", info_out)
-            if percent_m:
-                battery = int(percent_m.group(1))
-                
-            connected_m = re.search(r"present:\s*(yes|no)", info_out)
-            if connected_m:
-                connected = connected_m.group(1) == "yes"
-                
-            state_m = re.search(r"state:\s*(.*)", info_out)
-            if state_m:
-                state_str = state_m.group(1).strip()
-                charging = state_str == "charging"
-                if not connected:
-                    connected = state_str not in ["unknown", "empty"]
+    output = run_command(["upower", "-e"])
+    if not output:
+        return [], "upower returned no devices"
+    for line in output.splitlines():
+        path = line.strip()
+        if not path or any(value in path for value in ("battery_BAT", "line_power", "DisplayDevice")):
+            continue
+        info = run_command(["upower", "-i", path])
+        if not info:
+            continue
+        model = re.search(r"model:\s*(.*)", info)
+        kind = re.search(r"device-type:\s*(.*)", info)
+        percent = re.search(r"percentage:\s*(\d+)%", info)
+        present = re.search(r"present:\s*(yes|no)", info)
+        state = re.search(r"state:\s*(.*)", info)
+        state_value = state.group(1).strip() if state else ""
+        connected = present and present.group(1) == "yes"
+        if not connected:
+            connected = state_value not in ("", "unknown", "empty")
+        devices.append(device(
+            model.group(1).strip() if model else path.rsplit("/", 1)[-1],
+            "upower:" + path,
+            kind.group(1).strip() if kind else "unknown",
+            connected,
+            int(percent.group(1)) if percent else None,
+            state_value == "charging",
+            "upower",
+        ))
+    return devices, None
 
-            if model:
-                devices.append({
-                    "name": model,
-                    "type": dev_type,
-                    "connected": connected,
-                    "battery": battery,
-                    "charging": charging,
-                    "connection": "wireless/USB"
-                })
-    except Exception as e:
-        pass
-    return devices
 
 def get_bluetooth_devices():
+    if not command_available("bluetoothctl"):
+        return [], "bluetoothctl is not installed"
     devices = []
-    try:
-        out = subprocess.check_output(["bluetoothctl", "devices"]).decode("utf-8")
-        for line in out.strip().split("\n"):
-            m = re.match(r"Device\s+([0-9A-Fa-f:]+)\s+(.*)", line)
-            if m:
-                mac = m.group(1)
-                name = m.group(2)
-                
-                info_out = subprocess.check_output(["bluetoothctl", "info", mac]).decode("utf-8")
-                connected = "Connected: yes" in info_out
-                
-                battery = None
-                bat_m = re.search(r"Battery Percentage:\s+.*\((\d+)\)", info_out)
-                if not bat_m:
-                    bat_m = re.search(r"Battery Percentage:\s+(\d+)", info_out)
-                if bat_m:
-                    battery = int(bat_m.group(1))
-                
-                dev_type = "unknown"
-                if "Icon: audio-headset" in info_out or "audio" in name.lower() or "buds" in name.lower() or "head" in name.lower():
-                    dev_type = "headphone"
-                elif "Icon: input-mouse" in info_out or "mouse" in name.lower():
-                    dev_type = "mouse"
-                elif "Icon: input-keyboard" in info_out or "keyboard" in name.lower():
-                    dev_type = "keyboard"
-                
-                devices.append({
-                    "name": name,
-                    "connected": connected,
-                    "battery": battery,
-                    "charging": False,
-                    "type": dev_type,
-                    "connection": "bluetooth"
-                })
-    except Exception as e:
-        pass
-    return devices
+    output = run_command(["bluetoothctl", "devices"])
+    if not output:
+        return [], None
+    for line in output.splitlines():
+        match = re.match(r"Device\s+([0-9A-Fa-f:]+)\s+(.*)", line.strip())
+        if not match:
+            continue
+        address, name = match.groups()
+        info = run_command(["bluetoothctl", "info", address])
+        connected = "Connected: yes" in info
+        battery_match = re.search(r"Battery Percentage:\s+.*\((\d+)\)", info) or re.search(r"Battery Percentage:\s+(\d+)", info)
+        lower_name = name.lower()
+        if "audio-headset" in info or any(value in lower_name for value in ("audio", "buds", "head")):
+            dev_type = "headphone"
+        elif "input-mouse" in info or "mouse" in lower_name:
+            dev_type = "mouse"
+        elif "input-keyboard" in info or "keyboard" in lower_name:
+            dev_type = "keyboard"
+        else:
+            dev_type = "unknown"
+        devices.append(device(name, "bluetooth:" + address.lower(), dev_type, connected, int(battery_match.group(1)) if battery_match else None, False, "bluetooth"))
+    return devices, None
+
 
 def get_usb_devices():
+    usb_dir = "/sys/bus/usb/devices"
+    if not os.path.isdir(usb_dir):
+        return [], "USB device directory is unavailable"
     devices = []
     try:
-        usb_dir = "/sys/bus/usb/devices"
-        if os.path.exists(usb_dir):
-            for filename in os.listdir(usb_dir):
-                product_path = os.path.join(usb_dir, filename, "product")
-                if os.path.exists(product_path):
-                    with open(product_path, "r") as f:
-                        name = f.read().strip()
-                    
-                    if not name or name in ["xHCI Host Controller", "Bluetooth Radio", "Integrated Camera", "Root Hub"]:
-                        continue
-                        
-                    name_lower = name.lower()
-                    if "ite device" in name_lower or "ite tech" in name_lower:
-                        continue
-                        
-                    dev_type = "unknown"
-                    if "mouse" in name_lower:
-                        dev_type = "mouse"
-                    elif "keyboard" in name_lower:
-                        dev_type = "keyboard"
-                    elif "headset" in name_lower or "headphone" in name_lower or "audio" in name_lower:
-                        dev_type = "headphone"
-                        
-                    devices.append({
-                        "name": name,
-                        "connected": True,
-                        "battery": None,
-                        "charging": False,
-                        "type": dev_type,
-                        "connection": "wired"
-                    })
-    except Exception as e:
-        pass
-    return devices
+        entries = os.listdir(usb_dir)
+    except OSError:
+        return [], "Unable to read USB devices"
+    ignored = ("xHCI Host Controller", "Bluetooth Radio", "Integrated Camera", "Root Hub")
+    for entry in entries:
+        base = os.path.join(usb_dir, entry)
+        product_path = os.path.join(base, "product")
+        try:
+            with open(product_path, "r") as file:
+                name = file.read().strip()
+        except OSError:
+            continue
+        if not name or name in ignored:
+            continue
+        lower_name = name.lower()
+        if "ite device" in lower_name or "ite tech" in lower_name:
+            continue
+        if "mouse" in lower_name:
+            dev_type = "mouse"
+        elif "keyboard" in lower_name:
+            dev_type = "keyboard"
+        elif any(value in lower_name for value in ("headset", "headphone", "audio")):
+            dev_type = "headphone"
+        else:
+            dev_type = "unknown"
+        devices.append(device(name, "usb:" + entry, dev_type, True, None, False, "wired"))
+    return devices, None
+
 
 def get_kdeconnect_devices():
+    if not command_available("kdeconnect-cli"):
+        return [], "kdeconnect-cli is not installed"
     devices = []
-    try:
-        out = subprocess.check_output(["kdeconnect-cli", "-l", "--id-name-only"]).decode("utf-8")
-        for line in out.strip().split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            
-            parts = line.split(" ", 1)
-            if len(parts) < 2:
-                continue
-            dev_id, dev_name = parts[0], parts[1]
-            
-            connected = False
-            try:
-                reach_out = subprocess.check_output([
-                    "qdbus", "org.kde.kdeconnect", 
-                    f"/modules/kdeconnect/devices/{dev_id}", 
-                    "org.kde.kdeconnect.device.isReachable"
-                ]).decode("utf-8").strip()
-                connected = reach_out == "true"
-            except Exception:
-                pass
-                
-            battery = None
-            charging = False
-            dev_type = "phone"
-            
-            if connected:
-                try:
-                    charge_out = subprocess.check_output([
-                        "qdbus", "org.kde.kdeconnect", 
-                        f"/modules/kdeconnect/devices/{dev_id}/battery", 
-                        "org.kde.kdeconnect.device.battery.charge"
-                    ]).decode("utf-8").strip()
-                    battery = int(charge_out)
-                    
-                    charge_state = subprocess.check_output([
-                        "qdbus", "org.kde.kdeconnect", 
-                        f"/modules/kdeconnect/devices/{dev_id}/battery", 
-                        "org.kde.kdeconnect.device.battery.isCharging"
-                    ]).decode("utf-8").strip()
-                    charging = charge_state == "true"
-                except Exception:
-                    pass
-                
-                try:
-                    type_out = subprocess.check_output([
-                        "qdbus", "org.kde.kdeconnect", 
-                        f"/modules/kdeconnect/devices/{dev_id}", 
-                        "org.kde.kdeconnect.device.type"
-                    ]).decode("utf-8").strip()
-                    if type_out:
-                        dev_type = type_out
-                except Exception:
-                    pass
-            
-            type_map = {
-                "phone": "phone",
-                "tablet": "tablet",
-                "laptop": "laptop",
-                "pc": "laptop",
-                "desktop": "laptop"
-            }
-            mapped_type = type_map.get(dev_type, "phone")
-            
-            devices.append({
-                "name": dev_name,
-                "connected": connected,
-                "battery": battery,
-                "charging": charging,
-                "type": mapped_type,
-                "connection": "kdeconnect"
-            })
-    except Exception as e:
-        pass
-    return devices
+    output = run_command(["kdeconnect-cli", "-l", "--id-name-only"])
+    for line in output.splitlines():
+        parts = line.strip().split(" ", 1)
+        if len(parts) != 2:
+            continue
+        dev_id, name = parts
+        reachable = run_command(["kdeconnect-cli", "-d", dev_id, "--ping"]) != ""
+        devices.append(device(name, "kdeconnect:" + dev_id, "phone", reachable, None, False, "kdeconnect"))
+    return devices, None
 
-# Combine lists and avoid duplicates
-upower_devs = get_upower_devices()
-bt_devs = get_bluetooth_devices()
-usb_devs = get_usb_devices()
-kde_devs = get_kdeconnect_devices()
 
-all_devices = []
-seen_names = set()
+def collect():
+    functions = [get_kdeconnect_devices, get_bluetooth_devices, get_upower_devices, get_usb_devices]
+    devices = []
+    errors = []
+    with ThreadPoolExecutor(max_workers=len(functions)) as executor:
+        for result_devices, error in executor.map(lambda function: function(), functions):
+            devices.extend(result_devices)
+            if error:
+                errors.append(error)
+    unique = {}
+    for item in devices:
+        unique.setdefault(item["id"], item)
+    result = sorted(unique.values(), key=lambda item: (not item["connected"], item["name"].lower()))
+    return {"devices": result, "errors": errors}
 
-# 1. Add KDE Connect devices
-for d in kde_devs:
-    all_devices.append(d)
-    seen_names.add(d["name"].lower())
 
-# 2. Add BT devices
-for d in bt_devs:
-    if d["name"].lower() not in seen_names:
-        all_devices.append(d)
-        seen_names.add(d["name"].lower())
-
-# 3. Add UPower devices
-for d in upower_devs:
-    if d["name"].lower() not in seen_names:
-        all_devices.append(d)
-        seen_names.add(d["name"].lower())
-
-# 4. Add USB devices (excluding internal/duplicates)
-for d in usb_devs:
-    if "hub" in d["name"].lower() or "controller" in d["name"].lower():
-        continue
-    if d["name"].lower() not in seen_names:
-        all_devices.append(d)
-        seen_names.add(d["name"].lower())
-
-# Sort: connected devices first
-all_devices.sort(key=lambda d: not d["connected"])
-print(json.dumps(all_devices))
+print(json.dumps(collect()))
