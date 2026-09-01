@@ -25,7 +25,8 @@ Item {
         { key: "notes",       icon: "note_stack_add",     name: Translation.tr("Notes") },
         { key: "timers",      icon: "timer",              name: Translation.tr("Timers") },
         { key: "todo",      icon: "add_task",      name: Translation.tr("To-Do") },
-        { key: "screentime", icon: "schedule",      name: Translation.tr("Screen Time") },
+        { key: "devices",   icon: "devices",       name: Translation.tr("Connected Devices") },
+        { key: "screentime", icon: "schedule",     name: Translation.tr("Screen Time") },
     ]
 
     Rectangle {
