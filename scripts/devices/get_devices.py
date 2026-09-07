@@ -135,12 +135,13 @@ def get_kdeconnect_devices():
         return [], "kdeconnect-cli is not installed"
     devices = []
     output = run_command(["kdeconnect-cli", "-l", "--id-name-only"])
+    available = set(run_command(["kdeconnect-cli", "--list-available", "--id-only"]).splitlines())
     for line in output.splitlines():
         parts = line.strip().split(" ", 1)
         if len(parts) != 2:
             continue
         dev_id, name = parts
-        reachable = run_command(["kdeconnect-cli", "-d", dev_id, "--ping"]) != ""
+        reachable = dev_id in available
         devices.append(device(name, "kdeconnect:" + dev_id, "phone", reachable, None, False, "kdeconnect"))
     return devices, None
 
