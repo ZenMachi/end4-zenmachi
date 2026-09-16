@@ -29,10 +29,12 @@ Rectangle {
     property bool mirrorFeedHasRenderedFrame: false
     readonly property var dev: AndroidConnect.mainDevice
     readonly property bool hasDevice: (dev !== null && dev.reachable) || AndroidConnect.resolvedAdbSerial() !== ""
-    readonly property string deviceName: (dev && dev.name) ? dev.name : (AndroidConnect.adbDeviceName || "Android")
+    readonly property bool isAirplaneMode: AndroidConnect.adbAirplaneMode || Boolean(dev && dev.airplaneMode)
+    readonly property string wifiSsid: AndroidConnect.adbWifiSsid || (dev ? dev.wifiSsid : "")
+    readonly property string deviceName: AndroidConnect.adbDeviceName || (dev && dev.name) || qsTr("Android Phone")
     readonly property int deviceBattery: (dev && dev.battery !== undefined && dev.battery >= 0) ? dev.battery : (AndroidConnect.adbBatteryLevel >= 0 ? AndroidConnect.adbBatteryLevel : -1)
     readonly property bool deviceCharging: (dev && dev.isCharging) || AndroidConnect.adbIsCharging
-    readonly property string deviceNetwork: (dev && dev.cellularNetworkType) ? AndroidConnectUtils.getNetworkTypeText(dev.cellularNetworkType) : AndroidConnectUtils.getNetworkTypeText(AndroidConnect.adbNetworkType)
+    readonly property string deviceNetwork: AndroidConnectUtils.getNetworkTypeText((dev && dev.cellularNetworkType) ? dev.cellularNetworkType : AndroidConnect.adbNetworkType, isAirplaneMode, wifiSsid)
     readonly property int deviceSignal: (dev && dev.cellularNetworkStrength !== undefined) ? dev.cellularNetworkStrength : AndroidConnect.adbSignalStrength
     property string currentTimeString: "12:00"
     readonly property real deviceArtWidth: 597
@@ -285,7 +287,14 @@ Rectangle {
                         spacing: 4
 
                         MaterialSymbol {
-                            text: AndroidConnectUtils.getSignalStrengthIcon(phoneRoot.deviceSignal)
+                            text: AndroidConnectUtils.getSignalStrengthIcon(phoneRoot.deviceSignal, phoneRoot.isAirplaneMode)
+                            iconSize: Math.max(12, Math.round(14 * phoneRoot.scaleFactor))
+                            color: Appearance.colors.colOnLayer0
+                        }
+
+                        MaterialSymbol {
+                            visible: phoneRoot.wifiSsid !== ""
+                            text: "wifi"
                             iconSize: Math.max(12, Math.round(14 * phoneRoot.scaleFactor))
                             color: Appearance.colors.colOnLayer0
                         }

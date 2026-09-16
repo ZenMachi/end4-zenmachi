@@ -12,12 +12,13 @@ MouseArea {
     property bool isMaterial: Config.options.bar.cornerStyle === 3
     property bool hovered: containsMouse
     readonly property var device: AndroidConnect.mainDevice
-    readonly property bool hasDevice: device !== null && device.reachable
-    readonly property bool hasBattery: hasDevice && device.battery !== undefined && device.battery >= 0
-    readonly property string batteryText: hasBattery ? (device.battery + "%") : ""
+    readonly property bool hasDevice: (device !== null && device.reachable) || AndroidConnect.resolvedAdbSerial() !== ""
+    readonly property int batteryValue: (device && device.battery !== undefined && device.battery >= 0) ? device.battery : (AndroidConnect.adbBatteryLevel >= 0 ? AndroidConnect.adbBatteryLevel : -1)
+    readonly property bool hasBattery: hasDevice && batteryValue >= 0
+    readonly property string batteryText: hasBattery ? (batteryValue + "%") : ""
     readonly property string stateIcon: AndroidConnectUtils.getConnectionStateIcon(device, AndroidConnect.daemonAvailable)
-    readonly property bool isLow: hasBattery && device.battery < 20
-    readonly property bool isCharging: Boolean(hasDevice && device && device.isCharging)
+    readonly property bool isLow: hasBattery && batteryValue < 20
+    readonly property bool isCharging: Boolean(hasDevice && ((device && device.isCharging) || AndroidConnect.adbIsCharging))
 
     visible: !Config.options.androidConnect.hideBarIfNoDevice || AndroidConnect.anyDevicesConnected
     hoverEnabled: !Config.options.bar.tooltips.clickToShow

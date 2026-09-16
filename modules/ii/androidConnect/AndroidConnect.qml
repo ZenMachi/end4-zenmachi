@@ -36,10 +36,16 @@ Scope {
     readonly property real phoneBaseWidth: phoneBaseHeight * (597 / 1241)
     readonly property real phoneHeight: phoneBaseHeight * phoneSizeFactor
     readonly property real phoneWidth: phoneBaseWidth * phoneSizeFactor
+    readonly property string currentDeviceName: {
+        if (AndroidConnect.adbDeviceName && AndroidConnect.adbDeviceName !== "")
+            return AndroidConnect.adbDeviceName;
+        if (device && device.name && device.name !== "Android Phone")
+            return device.name;
+        return qsTr("Android Phone");
+    }
     // Brand badge resolution
     readonly property string brandBadgeSource: {
-        var devName = (device && device.name) ? device.name : (AndroidConnect.adbDeviceName || "");
-        var brand = AndroidConnectUtils.getBrandName(devName);
+        var brand = AndroidConnectUtils.getBrandName(root.currentDeviceName);
         switch (brand) {
         case "Google":
             return Qt.resolvedUrl("assets/brand-badges/google.svg");
@@ -51,10 +57,11 @@ Scope {
             return Qt.resolvedUrl("assets/brand-badges/android.svg");
         }
     }
-    readonly property string brandName: {
-        var devName = (device && device.name) ? device.name : (AndroidConnect.adbDeviceName || "Android");
-        return AndroidConnectUtils.getBrandName(devName);
-    }
+    readonly property string brandName: AndroidConnectUtils.getBrandName(root.currentDeviceName)
+
+    readonly property bool isAirplaneMode: AndroidConnect.adbAirplaneMode || Boolean(device && device.airplaneMode)
+    readonly property string wifiSsid: AndroidConnect.adbWifiSsid || (device ? device.wifiSsid : "")
+
     // scrcpy embedded mirror
     readonly property string embeddedVideoDevice: "/dev/video10"
     readonly property int mirrorMaxSize: (Config.options.androidConnect && Config.options.androidConnect.mirrorMaxSize) ? Config.options.androidConnect.mirrorMaxSize : 960
@@ -68,9 +75,9 @@ Scope {
     // Telemetry helpers
     readonly property int batteryValue: hasDevice && device && device.battery !== undefined && device.battery >= 0 ? device.battery : (AndroidConnect.adbBatteryLevel >= 0 ? AndroidConnect.adbBatteryLevel : -1)
     readonly property bool isCharging: hasDevice && ((device && device.isCharging) || AndroidConnect.adbIsCharging)
-    readonly property string networkType: hasDevice ? AndroidConnectUtils.getNetworkTypeText((device && device.cellularNetworkType) ? device.cellularNetworkType : AndroidConnect.adbNetworkType) : "--"
-    readonly property string signalText: hasDevice ? AndroidConnectUtils.getSignalStrengthText((device && device.cellularNetworkStrength !== undefined) ? device.cellularNetworkStrength : AndroidConnect.adbSignalStrength) : "--"
-    readonly property string signalIcon: hasDevice ? AndroidConnectUtils.getSignalStrengthIcon((device && device.cellularNetworkStrength !== undefined) ? device.cellularNetworkStrength : AndroidConnect.adbSignalStrength) : "signal_cellular_off"
+    readonly property string networkType: hasDevice ? AndroidConnectUtils.getNetworkTypeText((device && device.cellularNetworkType) ? device.cellularNetworkType : AndroidConnect.adbNetworkType, isAirplaneMode, wifiSsid) : "--"
+    readonly property string signalText: hasDevice ? AndroidConnectUtils.getSignalStrengthText((device && device.cellularNetworkStrength !== undefined) ? device.cellularNetworkStrength : AndroidConnect.adbSignalStrength, isAirplaneMode) : "--"
+    readonly property string signalIcon: hasDevice ? AndroidConnectUtils.getSignalStrengthIcon((device && device.cellularNetworkStrength !== undefined) ? device.cellularNetworkStrength : AndroidConnect.adbSignalStrength, isAirplaneMode) : "signal_cellular_off"
     // Panel sizing
     readonly property real panelWidth: phoneWidth + infoColumnWidth + 60
     readonly property real infoColumnWidth: 330
@@ -197,6 +204,20 @@ Scope {
             target: GlobalFocusGrab
         }
 
+        Connections {
+            target: AndroidConnect
+            function onAnyDevicesConnectedChanged() {
+                if (GlobalStates.androidConnectOpen && root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning) {
+                    autoStartTimer.restart();
+                }
+            }
+            function onAdbConnectedSerialsChanged() {
+                if (GlobalStates.androidConnectOpen && root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning) {
+                    autoStartTimer.restart();
+                }
+            }
+        }
+
         // Click-to-dismiss background
         Rectangle {
             anchors.fill: parent
@@ -276,24 +297,160 @@ Scope {
                     Layout.fillWidth: true
                     spacing: 12
 
-                    // Brand badge
-                    Image {
-                        source: root.brandBadgeSource
-                        sourceSize.height: 28
-                        sourceSize.width: 28
-                        fillMode: Image.PreserveAspectFit
-                        Layout.alignment: Qt.AlignVCenter
-                    }
-
-                    // Device name
-                    StyledText {
-                        text: root.hasDevice ? ((root.device && root.device.name) ? root.device.name : (AndroidConnect.adbDeviceName || qsTr("Android Phone"))) : qsTr("No device connected")
-                        font.pixelSize: Appearance.font.pixelSize.large
-                        font.weight: Font.Bold
-                        color: Appearance.colors.colOnLayer0
+                    // Interactive Device Selector
+                    MouseArea {
+                        id: deviceSelectorArea
                         Layout.fillWidth: true
-                        Layout.alignment: Qt.AlignVCenter
-                        elide: Text.ElideRight
+                        Layout.preferredHeight: 36
+                        hoverEnabled: true
+                        cursorShape: AndroidConnect.adbConnectedDevices.length > 1 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: {
+                            if (AndroidConnect.adbConnectedDevices.length > 1) {
+                                if (deviceMenuPopup.visible) {
+                                    deviceMenuPopup.close();
+                                } else {
+                                    deviceMenuPopup.open();
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Appearance.rounding.small
+                            color: (deviceSelectorArea.containsMouse && AndroidConnect.adbConnectedDevices.length > 1)
+                                ? Appearance.colors.colLayer1
+                                : "transparent"
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 4
+                                anchors.rightMargin: 8
+                                spacing: 10
+
+                                // Brand badge
+                                Image {
+                                    source: root.brandBadgeSource
+                                    sourceSize.height: 26
+                                    sourceSize.width: 26
+                                    fillMode: Image.PreserveAspectFit
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+
+                                // Device name
+                                StyledText {
+                                    text: root.hasDevice ? root.currentDeviceName : qsTr("No device connected")
+                                    font.pixelSize: Appearance.font.pixelSize.large
+                                    font.weight: Font.Bold
+                                    color: Appearance.colors.colOnLayer0
+                                    Layout.fillWidth: true
+                                    Layout.alignment: Qt.AlignVCenter
+                                    elide: Text.ElideRight
+                                }
+
+                                // Dropdown chevron (visible if multiple devices)
+                                MaterialSymbol {
+                                    visible: AndroidConnect.adbConnectedDevices.length > 1
+                                    text: deviceMenuPopup.visible ? "expand_less" : "expand_more"
+                                    iconSize: 20
+                                    color: Appearance.colors.colSubtext
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                            }
+                        }
+
+                        Popup {
+                            id: deviceMenuPopup
+                            y: parent.height + 4
+                            x: 0
+                            width: Math.max(parent.width, 280)
+                            contentHeight: deviceMenuColumn.implicitHeight
+                            padding: 8
+                            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                            enter: Transition {
+                                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 150; easing.type: Easing.OutCubic }
+                            }
+                            exit: Transition {
+                                NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 150; easing.type: Easing.OutCubic }
+                            }
+                            background: Rectangle {
+                                color: Appearance.colors.colLayer1
+                                border.width: 1
+                                border.color: Appearance.colors.colLayer0Border
+                                radius: Appearance.rounding.normal
+                            }
+                            contentItem: ColumnLayout {
+                                id: deviceMenuColumn
+                                spacing: 4
+                                StyledText {
+                                    text: qsTr("Connected Devices")
+                                    font.pixelSize: Appearance.font.pixelSize.smaller
+                                    font.weight: Font.Bold
+                                    color: Appearance.colors.colSubtext
+                                    Layout.leftMargin: 8
+                                    Layout.topMargin: 4
+                                    Layout.bottomMargin: 2
+                                }
+                                Repeater {
+                                    model: AndroidConnect.adbConnectedDevices
+                                    delegate: RippleButton {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        implicitHeight: 46
+                                        buttonRadius: Appearance.rounding.small
+                                        colBackground: (modelData.serial === AndroidConnect.resolvedAdbSerial())
+                                            ? Appearance.colors.colPrimaryContainer
+                                            : (hovered ? Appearance.colors.colLayer2 : "transparent")
+                                        onClicked: {
+                                            AndroidConnect.selectDevice(modelData.serial);
+                                            deviceMenuPopup.close();
+                                        }
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 10
+                                            anchors.rightMargin: 10
+                                            spacing: 10
+                                            MaterialSymbol {
+                                                text: modelData.isUsb ? "usb" : "wifi"
+                                                iconSize: 18
+                                                color: (modelData.serial === AndroidConnect.resolvedAdbSerial())
+                                                    ? Appearance.colors.colOnPrimaryContainer
+                                                    : Appearance.colors.colOnLayer1
+                                            }
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 1
+                                                StyledText {
+                                                    text: modelData.name || modelData.model || modelData.serial
+                                                    font.pixelSize: Appearance.font.pixelSize.normal
+                                                    font.weight: Font.Bold
+                                                    color: (modelData.serial === AndroidConnect.resolvedAdbSerial())
+                                                        ? Appearance.colors.colOnPrimaryContainer
+                                                        : Appearance.colors.colOnLayer1
+                                                    elide: Text.ElideRight
+                                                    Layout.fillWidth: true
+                                                }
+                                                StyledText {
+                                                    text: modelData.serial + (modelData.isUsb ? " (USB)" : " (Wireless)")
+                                                    font.pixelSize: Appearance.font.pixelSize.smallest
+                                                    color: (modelData.serial === AndroidConnect.resolvedAdbSerial())
+                                                        ? Appearance.colors.colOnPrimaryContainer
+                                                        : Appearance.colors.colSubtext
+                                                    elide: Text.ElideRight
+                                                    Layout.fillWidth: true
+                                                }
+                                            }
+                                            MaterialSymbol {
+                                                visible: modelData.serial === AndroidConnect.resolvedAdbSerial()
+                                                text: "check"
+                                                iconSize: 18
+                                                color: Appearance.colors.colOnPrimaryContainer
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Size cycle button
@@ -575,11 +732,10 @@ Scope {
                             RowLayout {
                                 spacing: 6
 
-                                StyledText {
-                                    text: root.networkType
-                                    font.pixelSize: Appearance.font.pixelSize.small
-                                    font.weight: Font.Bold
-                                    color: Appearance.colors.colPrimary
+                                MaterialSymbol {
+                                    text: root.isAirplaneMode ? (root.wifiSsid !== "" ? "wifi" : "airplanemode_active") : "signal_cellular_alt"
+                                    iconSize: 18
+                                    color: Appearance.colors.colSubtext
                                 }
 
                                 StyledText {
@@ -595,6 +751,8 @@ Scope {
                                 font.pixelSize: Appearance.font.pixelSize.huge
                                 font.weight: Font.Bold
                                 color: Appearance.colors.colOnLayer0
+                                elide: Text.ElideRight
+                                Layout.maximumWidth: root.infoColumnWidth - 32
                             }
 
                         }
@@ -613,7 +771,7 @@ Scope {
                                 }
 
                                 StyledText {
-                                    text: qsTr("Signal")
+                                    text: root.isAirplaneMode ? qsTr("Radio") : qsTr("Signal")
                                     font.pixelSize: Appearance.font.pixelSize.small
                                     color: Appearance.colors.colSubtext
                                 }
@@ -931,6 +1089,10 @@ Scope {
 
         function togglePhysicalScreen() {
             AndroidConnect.togglePhysicalScreen();
+        }
+
+        function openDeviceMenu() {
+            deviceMenuPopup.open();
         }
 
         target: "androidConnect"

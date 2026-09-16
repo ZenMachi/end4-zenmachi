@@ -18,7 +18,9 @@ Singleton {
     property var adbDeviceStates: ({
     })
     property var adbConnectedSerials: []
+    property var adbConnectedDevices: []
     property string adbUsbSerial: ""
+    property string userSelectedSerial: ""
     property bool adbHasUsbTransport: false
     property int adbScreenWidth: 1080
     property int adbScreenHeight: 2400
@@ -27,7 +29,9 @@ Singleton {
     property int adbBatteryLevel: -1
     property bool adbIsCharging: false
     property string adbNetworkType: ""
-    property int adbSignalStrength: 4
+    property int adbSignalStrength: -1
+    property bool adbAirplaneMode: false
+    property string adbWifiSsid: ""
     // --- 4. scrcpy Session Management ---
     property bool scrcpyLaunching: false
     property bool scrcpyStopRequested: false
@@ -63,8 +67,21 @@ Singleton {
 
     signal wirelessAdbFinished(bool success, string message)
 
+    function selectDevice(serial) {
+        if (!serial || serial === "")
+            return;
+        userSelectedSerial = serial;
+        queryAdbDeviceInfo(serial);
+        if (scrcpyRunning) {
+            restartScrcpySession(serial);
+        }
+    }
+
     // Resolves the best ADB serial to use for commands
     function resolvedAdbSerial() {
+        if (userSelectedSerial !== "" && adbConnectedSerials.indexOf(userSelectedSerial) !== -1)
+            return userSelectedSerial;
+
         if (adbUsbSerial !== "")
             return adbUsbSerial;
 
@@ -228,7 +245,31 @@ Singleton {
     }
 
     function queryAdbDeviceInfo(serial) {
-        adbDeviceInfoProc.command = ["bash", "-c", 'SERIAL="' + serial + '"\n' + 'MODEL=$(adb -s "$SERIAL" shell getprop ro.product.model 2>/dev/null)\n' + 'HOST=$(adb -s "$SERIAL" shell getprop net.hostname 2>/dev/null)\n' + 'BRAND=$(adb -s "$SERIAL" shell getprop ro.product.brand 2>/dev/null)\n' + 'SIZE=$(adb -s "$SERIAL" shell wm size 2>/dev/null | grep -o "[0-9]\\+x[0-9]\\+" | head -1)\n' + 'BATTERY=$(adb -s "$SERIAL" shell dumpsys battery 2>/dev/null)\n' + 'LEVEL=$(echo "$BATTERY" | grep "level:" | head -1 | awk "{print \\$2}")\n' + 'AC=$(echo "$BATTERY" | grep "AC powered: true" || echo "")\n' + 'USB=$(echo "$BATTERY" | grep "USB powered: true" || echo "")\n' + 'CHARGING="false"\n' + '[ -n "$AC" ] || [ -n "$USB" ] && CHARGING="true"\n' + 'NET_TYPE=$(adb -s "$SERIAL" shell getprop gsm.network.type 2>/dev/null | awk -F"," "{print \\$1}")\n' + 'SIGNAL=$(adb -s "$SERIAL" shell dumpsys telephony.registry 2>/dev/null | grep -o "level=[0-4]" | sort -rn | head -1 | cut -d= -f2)\n' + 'TIMEOUT=$(adb -s "$SERIAL" shell settings get system screen_off_timeout 2>/dev/null)\n' + '[ -z "$SIGNAL" ] && SIGNAL="4"\n' + '[ -z "$LEVEL" ] && LEVEL="-1"\n' + '[ -z "$TIMEOUT" ] && TIMEOUT="60000"\n' + 'echo "JSON:{\\"model\\":\\"$MODEL\\",\\"host\\":\\"$HOST\\",\\"brand\\":\\"$BRAND\\",\\"size\\":\\"$SIZE\\",\\"battery\\":$LEVEL,\\"charging\\":$CHARGING,\\"net\\":\\"$NET_TYPE\\",\\"signal\\":$SIGNAL,\\"timeout\\":\\"$TIMEOUT\\"}"'];
+        adbDeviceInfoProc.command = ["bash", "-c",
+            'SERIAL="' + serial + '"\n' +
+            'DEV_NAME=$(adb -s "$SERIAL" shell settings get global device_name 2>/dev/null | tr -d "\\r" | sed "s/[\\"\\\\]/ /g")\n' +
+            'MARKET=$(adb -s "$SERIAL" shell getprop ro.product.marketname 2>/dev/null | tr -d "\\r" | sed "s/[\\"\\\\]/ /g")\n' +
+            'MODEL=$(adb -s "$SERIAL" shell getprop ro.product.model 2>/dev/null | tr -d "\\r" | sed "s/[\\"\\\\]/ /g")\n' +
+            'BRAND=$(adb -s "$SERIAL" shell getprop ro.product.brand 2>/dev/null | tr -d "\\r" | sed "s/[\\"\\\\]/ /g")\n' +
+            'HOST=$(adb -s "$SERIAL" shell getprop net.hostname 2>/dev/null | tr -d "\\r" | sed "s/[\\"\\\\]/ /g")\n' +
+            'SIZE=$(adb -s "$SERIAL" shell wm size 2>/dev/null | grep -o "[0-9]\\+x[0-9]\\+" | head -1)\n' +
+            'BATTERY=$(adb -s "$SERIAL" shell dumpsys battery 2>/dev/null)\n' +
+            'LEVEL=$(echo "$BATTERY" | grep "level:" | head -1 | awk "{print \\$2}")\n' +
+            'AC=$(echo "$BATTERY" | grep "AC powered: true" || echo "")\n' +
+            'USB=$(echo "$BATTERY" | grep "USB powered: true" || echo "")\n' +
+            'CHARGING="false"\n' +
+            '[ -n "$AC" ] || [ -n "$USB" ] && CHARGING="true"\n' +
+            'AIRPLANE=$(adb -s "$SERIAL" shell settings get global airplane_mode_on 2>/dev/null | tr -d "\\r")\n' +
+            'NET_TYPE=$(adb -s "$SERIAL" shell getprop gsm.network.type 2>/dev/null | awk -F"," "{print \\$1}" | tr -d "\\r" | sed "s/[\\"\\\\]/ /g")\n' +
+            'WIFI_SSID=$(adb -s "$SERIAL" shell cmd wifi status 2>/dev/null | grep -o "Wifi is connected to \\"[^\\"]*\\"" | cut -d\\" -f2 | tr -d "\\r" | sed "s/[\\"\\\\]/ /g")\n' +
+            'SIGNAL=$(adb -s "$SERIAL" shell dumpsys telephony.registry 2>/dev/null | grep -o "level=[0-4]" | sort -rn | head -1 | cut -d= -f2)\n' +
+            'TIMEOUT=$(adb -s "$SERIAL" shell settings get system screen_off_timeout 2>/dev/null | tr -d "\\r")\n' +
+            '[ -z "$AIRPLANE" ] && AIRPLANE="0"\n' +
+            '[ -z "$SIGNAL" ] && SIGNAL="-1"\n' +
+            '[ -z "$LEVEL" ] && LEVEL="-1"\n' +
+            '[ -z "$TIMEOUT" ] && TIMEOUT="60000"\n' +
+            'echo "JSON:{\\"devName\\":\\"$DEV_NAME\\",\\"market\\":\\"$MARKET\\",\\"model\\":\\"$MODEL\\",\\"brand\\":\\"$BRAND\\",\\"host\\":\\"$HOST\\",\\"size\\":\\"$SIZE\\",\\"battery\\":$LEVEL,\\"charging\\":$CHARGING,\\"airplane\\":$AIRPLANE,\\"net\\":\\"$NET_TYPE\\",\\"wifi\\":\\"$WIFI_SSID\\",\\"signal\\":$SIGNAL,\\"timeout\\":\\"$TIMEOUT\\"}"'
+        ];
         adbDeviceInfoProc.running = true;
     }
 
@@ -791,6 +832,7 @@ Singleton {
             if (exitCode === 0) {
                 var lines = output.split("\n");
                 var serials = [];
+                var devicesList = [];
                 var usbSerialFound = "";
                 var usb = false;
                 for (var i = 1; i < lines.length; i++) {
@@ -799,18 +841,33 @@ Singleton {
                         var parts = line.replace(/\s+/g, " ").split(" ");
                         var serial = parts[0];
                         serials.push(serial);
-                        if (line.indexOf("usb:") !== -1) {
+                        var isUsb = line.indexOf("usb:") !== -1;
+                        if (isUsb) {
                             usb = true;
                             if (!usbSerialFound)
                                 usbSerialFound = serial;
-
                         }
+                        var modelMatch = line.match(/model:(\S+)/);
+                        var rawModel = modelMatch ? modelMatch[1].replace(/_/g, " ") : "Android Device";
+                        devicesList.push({
+                            "serial": serial,
+                            "model": rawModel,
+                            "name": ((serial === userSelectedSerial || serial === usbSerialFound) && adbDeviceName !== "") ? adbDeviceName : rawModel,
+                            "isUsb": isUsb,
+                            "isWifi": serial.indexOf(":") !== -1
+                        });
                     }
                 }
                 adbConnectedSerials = serials;
                 adbHasUsbTransport = usb;
                 adbUsbSerial = usbSerialFound;
                 var activeSerial = resolvedAdbSerial();
+                for (var d = 0; d < devicesList.length; d++) {
+                    if (devicesList[d].serial === activeSerial && adbDeviceName !== "") {
+                        devicesList[d].name = adbDeviceName;
+                    }
+                }
+                adbConnectedDevices = devicesList;
                 if (activeSerial !== "") {
                     anyDevicesConnected = true;
                     queryAdbDeviceInfo(activeSerial);
@@ -846,33 +903,59 @@ Singleton {
                             adbScreenHeight = parseInt(dims[1]) || 2400;
                         }
                     }
-                    var brandFormatted = parsed.brand ? (parsed.brand.charAt(0).toUpperCase() + parsed.brand.slice(1)) : "";
                     var displayName = "";
-                    if (brandFormatted && parsed.model)
-                        displayName = brandFormatted + " " + parsed.model;
-                    else
-                        displayName = parsed.host || parsed.model || "Android Phone";
+                    if (parsed.devName && parsed.devName !== "null" && parsed.devName !== "") {
+                        displayName = parsed.devName;
+                    } else if (parsed.market && parsed.market !== "null" && parsed.market !== "") {
+                        displayName = parsed.market;
+                    } else if (parsed.model && parsed.model !== "null" && parsed.model !== "") {
+                        var brandFormatted = parsed.brand ? (parsed.brand.charAt(0).toUpperCase() + parsed.brand.slice(1)) : "";
+                        if (brandFormatted && parsed.model.toLowerCase().indexOf(brandFormatted.toLowerCase()) === -1)
+                            displayName = brandFormatted + " " + parsed.model;
+                        else
+                            displayName = parsed.model;
+                    } else {
+                        displayName = parsed.host || "Android Phone";
+                    }
                     adbDeviceName = displayName;
                     adbBatteryLevel = parsed.battery !== undefined ? parsed.battery : -1;
                     adbIsCharging = parsed.charging === true;
-                    adbNetworkType = parsed.net || "LTE";
-                    adbSignalStrength = parsed.signal !== undefined ? parsed.signal : 4;
+                    adbAirplaneMode = (parsed.airplane === 1);
+                    adbWifiSsid = parsed.wifi || "";
+                    adbNetworkType = parsed.net || "";
+                    adbSignalStrength = (adbAirplaneMode || parsed.signal === undefined) ? -1 : parsed.signal;
+
                     // Update mainDevice telemetry
+                    var curSerial = resolvedAdbSerial();
                     mainDevice = {
-                        "id": resolvedAdbSerial(),
-                        "name": (mainDevice && mainDevice.name && mainDevice.name !== "Android Phone") ? mainDevice.name : displayName,
+                        "id": curSerial,
+                        "name": displayName,
                         "reachable": true,
                         "paired": true,
                         "battery": adbBatteryLevel >= 0 ? adbBatteryLevel : (mainDevice ? mainDevice.battery : -1),
                         "isCharging": adbIsCharging,
-                        "cellularNetworkType": adbNetworkType || (mainDevice ? mainDevice.cellularNetworkType : "LTE"),
-                        "cellularNetworkStrength": adbSignalStrength !== undefined ? adbSignalStrength : (mainDevice ? mainDevice.cellularNetworkStrength : 4)
+                        "cellularNetworkType": adbAirplaneMode ? "Airplane Mode" : (adbNetworkType || (mainDevice ? mainDevice.cellularNetworkType : "LTE")),
+                        "cellularNetworkStrength": adbSignalStrength,
+                        "airplaneMode": adbAirplaneMode,
+                        "wifiSsid": adbWifiSsid
                     };
+
+                    // Update name in adbConnectedDevices if matching
+                    var updatedList = [];
+                    for (var d = 0; d < adbConnectedDevices.length; d++) {
+                        var devEntry = adbConnectedDevices[d];
+                        if (devEntry.serial === curSerial) {
+                            devEntry.name = displayName;
+                        }
+                        updatedList.push(devEntry);
+                    }
+                    adbConnectedDevices = updatedList;
+
                     if (parsed.timeout && parsed.timeout !== "2147483647" && parsed.timeout !== "null" && parseInt(parsed.timeout) > 0) {
                         originalScreenTimeout = parsed.timeout;
                     }
                     if (Config.options.androidConnect && Config.options.androidConnect.keepPhoneAwake && !keepAwakeActive) {
-                        setKeepAwake(resolvedAdbSerial(), true);
+                        setKeepAwake(curSerial, true);
                     }
                 } catch (e) {
                     console.error("Failed to parse adb device info json", e);

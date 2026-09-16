@@ -31,7 +31,8 @@ Singleton {
         return qsTr("Disconnected")
     }
 
-    function getSignalStrengthText(strength) {
+    function getSignalStrengthText(strength, isAirplaneMode) {
+        if (isAirplaneMode) return qsTr("Off")
         if (strength === undefined || strength < 0) return qsTr("Unknown")
         if (strength >= 4) return qsTr("Excellent")
         if (strength >= 3) return qsTr("Good")
@@ -40,7 +41,8 @@ Singleton {
         return qsTr("No signal")
     }
 
-    function getSignalStrengthIcon(strength) {
+    function getSignalStrengthIcon(strength, isAirplaneMode) {
+        if (isAirplaneMode) return "airplanemode_active"
         if (strength === undefined || strength < 0) return "signal_cellular_off"
         if (strength >= 4) return "signal_cellular_4_bar"
         if (strength >= 3) return "signal_cellular_3_bar"
@@ -49,8 +51,15 @@ Singleton {
         return "signal_cellular_0_bar"
     }
 
-    function getNetworkTypeText(networkType) {
-        if (!networkType || networkType === "") return qsTr("Unknown")
+    function getNetworkTypeText(networkType, isAirplaneMode, wifiSsid) {
+        if (isAirplaneMode) {
+            if (wifiSsid && wifiSsid !== "") return wifiSsid
+            return qsTr("Airplane Mode")
+        }
+        if (!networkType || networkType === "" || networkType.toLowerCase() === "unknown") {
+            if (wifiSsid && wifiSsid !== "") return wifiSsid
+            return qsTr("Unknown")
+        }
         const upper = networkType.toUpperCase()
         // Common cellular network types
         switch(upper) {
