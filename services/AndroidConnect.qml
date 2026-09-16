@@ -24,6 +24,7 @@ Singleton {
     property bool adbHasUsbTransport: false
     property int adbScreenWidth: 1080
     property int adbScreenHeight: 2400
+    property var adbDeviceScreenSizes: ({})
     // ADB Device Telemetry Cache
     property string adbDeviceName: ""
     property int adbBatteryLevel: -1
@@ -71,8 +72,12 @@ Singleton {
         if (!serial || serial === "")
             return;
         userSelectedSerial = serial;
+        if (adbDeviceScreenSizes[serial]) {
+            adbScreenWidth = adbDeviceScreenSizes[serial].width;
+            adbScreenHeight = adbDeviceScreenSizes[serial].height;
+        }
         queryAdbDeviceInfo(serial);
-        if (scrcpyRunning) {
+        if (scrcpyRunning || scrcpyLaunching) {
             restartScrcpySession(serial);
         }
     }
@@ -159,7 +164,7 @@ Singleton {
         scrcpyStopRequested = false;
         scrcpyStreamReady = false;
         scrcpyActiveSerial = targetSerial;
-        scrcpyPreLaunchProc.command = ["bash", "-c", "pkill -f 'scrcpy.*--v4l2-sink' 2>/dev/null || true; v4l2-ctl -d " + shellQuote(scrcpyFeedDevicePath) + " -c keep_format=1 -c sustain_framerate=1 2>/dev/null || true; adb -s " + shellQuote(targetSerial) + " shell \"cmd display power-reset 0 2>/dev/null; input keyevent 224; input keyevent 82 2>/dev/null || true\"; sleep 0.2"];
+        scrcpyPreLaunchProc.command = ["bash", "-c", "pkill -f '[s]crcpy.*--v4l2-sink' 2>/dev/null || true; v4l2-ctl -d " + shellQuote(scrcpyFeedDevicePath) + " -c keep_format=1 -c sustain_framerate=1 2>/dev/null || true; adb -s " + shellQuote(targetSerial) + " shell \"cmd display power-reset 0 2>/dev/null; input keyevent 224; input keyevent 82 2>/dev/null || true\"; SIZE=$(adb -s " + shellQuote(targetSerial) + " shell wm size 2>/dev/null | grep -o '[0-9]\\+x[0-9]\\+' | head -1); echo \"SIZE:$SIZE\"; sleep 0.2"];
         scrcpyPreLaunchProc.running = true;
     }
 
@@ -177,6 +182,10 @@ Singleton {
     function restartScrcpySession(serial) {
         var s = serial || scrcpyActiveSerial || resolvedAdbSerial();
         scrcpyRestartTimer.restartSerial = s;
+        scrcpyStreamReady = false;
+        scrcpyLaunching = true;
+        if (scrcpyPreLaunchProc.running)
+            scrcpyPreLaunchProc.running = false;
         if (scrcpySessionProc.running)
             scrcpySessionProc.running = false;
         scrcpyRestartTimer.restart();
@@ -187,6 +196,8 @@ Singleton {
         scrcpyLaunching = false;
         scrcpyStreamReady = false;
         scrcpyStreamSafetyTimer.stop();
+        if (scrcpyPreLaunchProc.running)
+            scrcpyPreLaunchProc.running = false;
         if (scrcpySessionProc.running)
             scrcpySessionProc.running = false;
 
@@ -675,23 +686,9 @@ Singleton {
         let baseMax = maxDim || 960;
         let ratio = screenW / screenH;
 
-        let bestW = 432;
-        let bestH = 960;
-        let minDiff = 999;
-
-        // Find (outW, outH) both divisible by 16 closest to device aspect ratio
-        for (let targetH = baseMax - 64; targetH <= baseMax + 64; targetH += 16) {
-            let idealW = targetH * ratio;
-            let targetW = Math.round(idealW / 16) * 16;
-            if (targetW <= 0)
-                continue;
-            let diff = Math.abs((targetW / targetH) - ratio);
-            if (diff < minDiff) {
-                minDiff = diff;
-                bestW = targetW;
-                bestH = targetH;
-            }
-        }
+        // Fixed chassis frame stream size: 432x960 (both multiples of 16 for H.264 macroblock alignment)
+        let bestH = Math.floor(baseMax / 16) * 16;
+        let bestW = Math.round(bestH * (432 / 960) / 16) * 16;
 
         // Calculate exact crop to guarantee that scrcpy scales EXACTLY to (bestW, bestH)
         // without fractional pixel truncation by the hardware encoder (which breaks YUV420 stride)
@@ -727,7 +724,27 @@ Singleton {
     Process {
         id: scrcpyPreLaunchProc
 
+        property string output: ""
+
+        stdout: SplitParser {
+            onRead: (data) => {
+                scrcpyPreLaunchProc.output += data;
+            }
+        }
+
         onExited: (exitCode, exitStatus) => {
+            if (output.indexOf("SIZE:") !== -1) {
+                var sizeMatch = output.match(/SIZE:([0-9]+)x([0-9]+)/);
+                if (sizeMatch && sizeMatch.length >= 3) {
+                    adbScreenWidth = parseInt(sizeMatch[1]) || 1080;
+                    adbScreenHeight = parseInt(sizeMatch[2]) || 2400;
+                    if (scrcpyActiveSerial) {
+                        adbDeviceScreenSizes[scrcpyActiveSerial] = { width: adbScreenWidth, height: adbScreenHeight };
+                    }
+                }
+            }
+            output = "";
+
             if (!scrcpyStopRequested && scrcpyActiveSerial !== "") {
                 var userMaxSize = (Config.options.androidConnect && Config.options.androidConnect.mirrorMaxSize) ? Config.options.androidConnect.mirrorMaxSize : 960;
                 var userFps = (Config.options.androidConnect && Config.options.androidConnect.mirrorMaxFps) ? Config.options.androidConnect.mirrorMaxFps : 60;
@@ -819,7 +836,7 @@ Singleton {
     Process {
         id: scrcpyCleanupProc
 
-        command: ["bash", "-c", "pkill -f 'scrcpy.*--v4l2-sink' 2>/dev/null || true"]
+        command: ["bash", "-c", "pkill -f '[s]crcpy.*--v4l2-sink' 2>/dev/null || true"]
     }
 
     Process {
@@ -902,6 +919,10 @@ Singleton {
                             adbScreenWidth = parseInt(dims[0]) || 1080;
                             adbScreenHeight = parseInt(dims[1]) || 2400;
                         }
+                    }
+                    var curSerial = resolvedAdbSerial();
+                    if (adbScreenWidth > 0 && adbScreenHeight > 0 && curSerial !== "") {
+                        adbDeviceScreenSizes[curSerial] = { "width": adbScreenWidth, "height": adbScreenHeight };
                     }
                     var displayName = "";
                     if (parsed.devName && parsed.devName !== "null" && parsed.devName !== "") {

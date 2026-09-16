@@ -1063,6 +1063,14 @@ Scope {
             AndroidConnect.toggleDirectScrcpy();
         }
 
+        function selectDevice(serial: string) {
+            AndroidConnect.selectDevice(serial);
+        }
+
+        function restartEmbeddedMirror() {
+            AndroidConnect.restartScrcpySession();
+        }
+
         function toggleEmbeddedMirror() {
             if (AndroidConnect.scrcpyRunning) {
                 AndroidConnect.stopScrcpySession();
