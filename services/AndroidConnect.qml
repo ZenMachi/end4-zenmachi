@@ -658,25 +658,28 @@ Singleton {
             }
         }
 
-        // Calculate exact crop to preserve 16-pixel macroblock alignment without skew or crop loss
+        // Calculate exact crop to guarantee that scrcpy scales EXACTLY to (bestW, bestH)
+        // without fractional pixel truncation by the hardware encoder (which breaks YUV420 stride)
         let targetRatio = bestW / bestH;
         let cropW = screenW;
         let cropH = screenH;
-        let cropX = 0;
-        let cropY = 0;
-        if (Math.abs(ratio - targetRatio) > 0.005) {
-            if (targetRatio <= ratio) {
-                cropH = screenH;
-                cropW = Math.floor(Math.round(screenH * targetRatio) / 2) * 2;
-            } else {
-                cropW = screenW;
-                cropH = Math.floor(Math.round(screenW / targetRatio) / 2) * 2;
-            }
-            cropW = Math.floor(cropW / 2) * 2;
-            cropH = Math.floor(cropH / 2) * 2;
-            cropX = Math.floor(Math.floor((screenW - cropW) / 2) / 2) * 2;
-            cropY = Math.floor(Math.floor((screenH - cropH) / 2) / 2) * 2;
+
+        if (targetRatio >= ratio) {
+            cropH = Math.round(screenW / targetRatio);
+        } else {
+            cropW = Math.round(screenH * targetRatio);
         }
+
+        // Fine-tune by single pixels to guarantee exact match with scrcpy rounding
+        while (Math.round(bestH * (cropW / cropH)) < bestW && cropH > 100) {
+            cropH--;
+        }
+        while (Math.round(bestH * (cropW / cropH)) > bestW && cropW > 100) {
+            cropW--;
+        }
+
+        let cropX = Math.floor((screenW - cropW) / 2);
+        let cropY = Math.floor((screenH - cropH) / 2);
 
         return {
             "outWidth": bestW,
