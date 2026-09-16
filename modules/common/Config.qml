@@ -852,8 +852,15 @@ Singleton {
                 property int phoneSizePresetIndex: 1
                 property string wirelessAdbPairHost: ""
                 property string wirelessAdbPairPort: ""
+                property string wirelessAdbPairCode: ""
                 property string wirelessAdbConnectHost: ""
                 property string wirelessAdbConnectPort: ""
+                property int mirrorMaxSize: 960
+                property int mirrorBitrateMbps: 12
+                property int mirrorMaxFps: 60
+                property bool keepPhoneAwake: false
+                property bool turnOffScreenOnMirror: false
+                property string originalScreenTimeout: "60000"
             }
         }
     }

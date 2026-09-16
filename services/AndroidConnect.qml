@@ -45,8 +45,19 @@ Singleton {
     property bool adbScreenRecordingActive: adbRecordProc.running
     property string adbRecordingPath: ""
     property bool keepAwakeActive: false
+    property string originalScreenTimeout: "60000"
+    property bool physicalScreenOff: (Config.options.androidConnect && Config.options.androidConnect.turnOffScreenOnMirror) ? true : false
     // --- 7. Wireless ADB ---
     property bool wirelessAdbBusy: false
+    property bool qrPairingActive: qrPairProc.running
+    property string qrImagePath: ""
+    property double qrImageTimestamp: 0
+    property string qrPairingCode: ""
+    property string qrServiceName: ""
+    property string qrPairStatus: ""
+    property bool qrPairSuccess: false
+    property string qrDiscoveredIp: ""
+    signal qrPairEvent(string event, var data)
     // --- 8. Periodic Refresh ---
     property bool reduceBackgroundRefresh: false
 
@@ -97,7 +108,8 @@ Singleton {
     }
 
     function shareFile(deviceId, filePath) {
-        var proc = Qt.createQmlObject('import Quickshell.Io; Process { command: ["kdeconnect-cli", "-d", "' + deviceId + '", "--share", "' + filePath + '"]; Component.onCompleted: running = true }', root);
+        var proc = Qt.createQmlObject('import Quickshell.Io; Process { command: ["kdeconnect-cli", "-d", "' + deviceId + '", "--share", "' + filePath + '"] }', root);
+        proc.running = true;
     }
 
     function requestPairing(deviceId) {
@@ -117,7 +129,8 @@ Singleton {
 
     function runBusctlCall(obj, itf, method, params) {
         var args = ["busctl", "--user", "call", "org.kde.kdeconnect", obj, itf, method].concat(params);
-        var proc = Qt.createQmlObject('import Quickshell.Io; Process { command: ' + JSON.stringify(args) + '; Component.onCompleted: running = true }', root);
+        var proc = Qt.createQmlObject('import Quickshell.Io; Process { command: ' + JSON.stringify(args) + ' }', root);
+        proc.running = true;
     }
 
     function launchScrcpySession(deviceId, commandString) {
@@ -129,8 +142,27 @@ Singleton {
         scrcpyStopRequested = false;
         scrcpyStreamReady = false;
         scrcpyActiveSerial = targetSerial;
-        scrcpyPreLaunchProc.command = ["bash", "-c", "pkill -f 'scrcpy.*--v4l2-sink' 2>/dev/null || true; v4l2-ctl -d " + shellQuote(scrcpyFeedDevicePath) + " -c keep_format=0 2>/dev/null || true; adb -s " + shellQuote(targetSerial) + " shell input keyevent KEYCODE_WAKEUP; sleep 0.2"];
+        scrcpyPreLaunchProc.command = ["bash", "-c", "pkill -f 'scrcpy.*--v4l2-sink' 2>/dev/null || true; v4l2-ctl -d " + shellQuote(scrcpyFeedDevicePath) + " -c keep_format=0 2>/dev/null || true; adb -s " + shellQuote(targetSerial) + " shell \"input keyevent 224; input keyevent 82 2>/dev/null || true\"; sleep 0.2"];
         scrcpyPreLaunchProc.running = true;
+    }
+
+    Timer {
+        id: scrcpyRestartTimer
+
+        interval: 350
+        repeat: false
+        property string restartSerial: ""
+        onTriggered: {
+            launchScrcpySession(restartSerial);
+        }
+    }
+
+    function restartScrcpySession(serial) {
+        var s = serial || scrcpyActiveSerial || resolvedAdbSerial();
+        scrcpyRestartTimer.restartSerial = s;
+        if (scrcpySessionProc.running)
+            scrcpySessionProc.running = false;
+        scrcpyRestartTimer.restart();
     }
 
     function stopScrcpySession() {
@@ -156,7 +188,7 @@ Singleton {
         }
         var devName = adbDeviceName || (mainDevice ? mainDevice.name : "Android");
         var title = "Android - " + devName;
-        var cmd = ["scrcpy", "-s", targetSerial, "--window-title=" + title, "--stay-awake"];
+        var cmd = ["scrcpy", "-s", targetSerial, "--display-id=0", "--window-title=" + title, "--stay-awake"];
         if (extraArgs && Array.isArray(extraArgs))
             cmd = cmd.concat(extraArgs);
 
@@ -169,7 +201,8 @@ Singleton {
         if (directScrcpyProc.running)
             directScrcpyProc.running = false;
 
-        var p = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", "pkill -f \'scrcpy.*--window-title\' 2>/dev/null || true"]; Component.onCompleted: running = true }', root);
+        var p = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", "pkill -f \'scrcpy.*--window-title\' 2>/dev/null || true"] }', root);
+        p.running = true;
     }
 
     function toggleDirectScrcpy() {
@@ -185,7 +218,8 @@ Singleton {
 
     function forceStopScrcpyProcesses(feedDevicePath) {
         var cmd = ["bash", "-c", "pkill -f 'scrcpy.*--v4l2-sink=" + feedDevicePath + "'"];
-        var p = Qt.createQmlObject('import Quickshell.Io; Process { command: ' + JSON.stringify(cmd) + '; Component.onCompleted: running = true }', root);
+        var p = Qt.createQmlObject('import Quickshell.Io; Process { command: ' + JSON.stringify(cmd) + ' }', root);
+        p.running = true;
     }
 
     // --- 5. ADB Device Management & Telemetry ---
@@ -194,7 +228,7 @@ Singleton {
     }
 
     function queryAdbDeviceInfo(serial) {
-        adbDeviceInfoProc.command = ["bash", "-c", 'SERIAL="' + serial + '"\n' + 'MODEL=$(adb -s "$SERIAL" shell getprop ro.product.model 2>/dev/null)\n' + 'HOST=$(adb -s "$SERIAL" shell getprop net.hostname 2>/dev/null)\n' + 'BRAND=$(adb -s "$SERIAL" shell getprop ro.product.brand 2>/dev/null)\n' + 'SIZE=$(adb -s "$SERIAL" shell wm size 2>/dev/null | grep -o "[0-9]\\+x[0-9]\\+" | head -1)\n' + 'BATTERY=$(adb -s "$SERIAL" shell dumpsys battery 2>/dev/null)\n' + 'LEVEL=$(echo "$BATTERY" | grep "level:" | head -1 | awk "{print \\$2}")\n' + 'AC=$(echo "$BATTERY" | grep "AC powered: true" || echo "")\n' + 'USB=$(echo "$BATTERY" | grep "USB powered: true" || echo "")\n' + 'CHARGING="false"\n' + '[ -n "$AC" ] || [ -n "$USB" ] && CHARGING="true"\n' + 'NET_TYPE=$(adb -s "$SERIAL" shell getprop gsm.network.type 2>/dev/null | awk -F"," "{print \\$1}")\n' + 'SIGNAL=$(adb -s "$SERIAL" shell dumpsys telephony.registry 2>/dev/null | grep -o "level=[0-4]" | sort -rn | head -1 | cut -d= -f2)\n' + '[ -z "$SIGNAL" ] && SIGNAL="4"\n' + '[ -z "$LEVEL" ] && LEVEL="-1"\n' + 'echo "JSON:{\\"model\\":\\"$MODEL\\",\\"host\\":\\"$HOST\\",\\"brand\\":\\"$BRAND\\",\\"size\\":\\"$SIZE\\",\\"battery\\":$LEVEL,\\"charging\\":$CHARGING,\\"net\\":\\"$NET_TYPE\\",\\"signal\\":$SIGNAL}"'];
+        adbDeviceInfoProc.command = ["bash", "-c", 'SERIAL="' + serial + '"\n' + 'MODEL=$(adb -s "$SERIAL" shell getprop ro.product.model 2>/dev/null)\n' + 'HOST=$(adb -s "$SERIAL" shell getprop net.hostname 2>/dev/null)\n' + 'BRAND=$(adb -s "$SERIAL" shell getprop ro.product.brand 2>/dev/null)\n' + 'SIZE=$(adb -s "$SERIAL" shell wm size 2>/dev/null | grep -o "[0-9]\\+x[0-9]\\+" | head -1)\n' + 'BATTERY=$(adb -s "$SERIAL" shell dumpsys battery 2>/dev/null)\n' + 'LEVEL=$(echo "$BATTERY" | grep "level:" | head -1 | awk "{print \\$2}")\n' + 'AC=$(echo "$BATTERY" | grep "AC powered: true" || echo "")\n' + 'USB=$(echo "$BATTERY" | grep "USB powered: true" || echo "")\n' + 'CHARGING="false"\n' + '[ -n "$AC" ] || [ -n "$USB" ] && CHARGING="true"\n' + 'NET_TYPE=$(adb -s "$SERIAL" shell getprop gsm.network.type 2>/dev/null | awk -F"," "{print \\$1}")\n' + 'SIGNAL=$(adb -s "$SERIAL" shell dumpsys telephony.registry 2>/dev/null | grep -o "level=[0-4]" | sort -rn | head -1 | cut -d= -f2)\n' + 'TIMEOUT=$(adb -s "$SERIAL" shell settings get system screen_off_timeout 2>/dev/null)\n' + '[ -z "$SIGNAL" ] && SIGNAL="4"\n' + '[ -z "$LEVEL" ] && LEVEL="-1"\n' + '[ -z "$TIMEOUT" ] && TIMEOUT="60000"\n' + 'echo "JSON:{\\"model\\":\\"$MODEL\\",\\"host\\":\\"$HOST\\",\\"brand\\":\\"$BRAND\\",\\"size\\":\\"$SIZE\\",\\"battery\\":$LEVEL,\\"charging\\":$CHARGING,\\"net\\":\\"$NET_TYPE\\",\\"signal\\":$SIGNAL,\\"timeout\\":\\"$TIMEOUT\\"}"'];
         adbDeviceInfoProc.running = true;
     }
 
@@ -260,19 +294,89 @@ Singleton {
     function stopAdbScreenRecording() {
         if (adbRecordProc.running) {
             var targetSerial = resolvedAdbSerial();
-            var p = Qt.createQmlObject('import Quickshell.Io; Process { command: ["adb", "-s", "' + targetSerial + '", "shell", "pkill", "-2", "screenrecord"]; Component.onCompleted: running = true }', root);
+            var p = Qt.createQmlObject('import Quickshell.Io; Process { command: ["adb", "-s", "' + targetSerial + '", "shell", "pkill", "-2", "screenrecord"] }', root);
+            p.running = true;
             adbRecordProc.running = false;
         }
     }
 
-    function toggleKeepAwake(serial) {
+    function setKeepAwake(serial, enabled) {
         var targetSerial = serial || resolvedAdbSerial();
         if (!targetSerial || targetSerial === "")
-            return ;
+            return;
 
-        keepAwakeActive = !keepAwakeActive;
-        var stateStr = keepAwakeActive ? "true" : "false";
-        var p = Qt.createQmlObject('import Quickshell.Io; Process { command: ["adb", "-s", "' + targetSerial + '", "shell", "svc", "power", "stayon", "' + stateStr + '"]; Component.onCompleted: running = true }', root);
+        keepAwakeActive = enabled;
+        if (enabled) {
+            var cmd = "adb -s " + shellQuote(targetSerial) + " shell \"settings put system screen_off_timeout 2147483647; svc power stayon true; input keyevent KEYCODE_WAKEUP\"";
+            var p1 = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmd) + '] }', root);
+            p1.running = true;
+            if (Config.options.androidConnect && Config.options.androidConnect.turnOffScreenOnMirror && scrcpyRunning && !physicalScreenOff) {
+                setPhysicalScreenPower(targetSerial, false);
+            }
+        } else {
+            var restoreTimeout = originalScreenTimeout || "60000";
+            var cmdRestore = "adb -s " + shellQuote(targetSerial) + " shell \"settings put system screen_off_timeout " + restoreTimeout + "; svc power stayon false\"";
+            var p2 = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmdRestore) + '] }', root);
+            p2.running = true;
+            if (physicalScreenOff) {
+                setPhysicalScreenPower(targetSerial, true);
+            }
+        }
+    }
+
+    function toggleKeepAwake(serial) {
+        setKeepAwake(serial, !keepAwakeActive);
+    }
+
+    function setPhysicalScreenPower(serial, powerOn) {
+        var targetSerial = serial || resolvedAdbSerial();
+        if (!targetSerial || targetSerial === "")
+            return;
+
+        if (powerOn) {
+            physicalScreenOff = false;
+            var cmdOn = "adb -s " + shellQuote(targetSerial) + " shell \"cmd display power-reset 0; input keyevent KEYCODE_WAKEUP\"";
+            var pOn = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmdOn) + '] }', root);
+            pOn.running = true;
+            if (scrcpyRunning) {
+                var currentSerialOn = scrcpyActiveSerial || targetSerial;
+                restartScrcpySession(currentSerialOn);
+            }
+        } else {
+            physicalScreenOff = true;
+            if (scrcpyRunning) {
+                var currentSerialOff = scrcpyActiveSerial || targetSerial;
+                restartScrcpySession(currentSerialOff);
+            } else {
+                var cmdOff = "adb -s " + shellQuote(targetSerial) + " shell \"cmd display power-off 0\"";
+                var pOff = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmdOff) + '] }', root);
+                pOff.running = true;
+            }
+        }
+    }
+
+    function togglePhysicalScreen(serial) {
+        setPhysicalScreenPower(serial, physicalScreenOff);
+    }
+
+    function restoreDeviceScreenSettings(serial) {
+        var targetSerial = serial || resolvedAdbSerial();
+        if (!targetSerial || targetSerial === "")
+            return;
+
+        if (physicalScreenOff) {
+            physicalScreenOff = false;
+            var cmdReset = "adb -s " + shellQuote(targetSerial) + " shell \"cmd display power-reset 0; input keyevent KEYCODE_WAKEUP\"";
+            var pR = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmdReset) + '] }', root);
+            pR.running = true;
+        }
+        if (keepAwakeActive && !(Config.options.androidConnect && Config.options.androidConnect.keepPhoneAwake)) {
+            keepAwakeActive = false;
+            var restoreTimeout = originalScreenTimeout || "60000";
+            var cmdT = "adb -s " + shellQuote(targetSerial) + " shell \"settings put system screen_off_timeout " + restoreTimeout + "; svc power stayon false\"";
+            var pT = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmdT) + '] }', root);
+            pT.running = true;
+        }
     }
 
     function pairWirelessAdb(host, port, code) {
@@ -285,8 +389,87 @@ Singleton {
     function connectWirelessAdb(host, port) {
         wirelessAdbBusy = true;
         var cmd = ["bash", "-c", "adb connect " + host + ":" + port];
-        var p = Qt.createQmlObject('import Quickshell.Io; Process { command: ' + JSON.stringify(cmd) + '; onExited: (c, s) => { root.wirelessAdbBusy = false; root.wirelessAdbFinished(c === 0, c === 0 ? "Connected successfully" : "Connection failed") } }', root);
+        var p = Qt.createQmlObject('import Quickshell.Io; Process { command: ' + JSON.stringify(cmd) + '; onExited: (c, s) => { root.wirelessAdbBusy = false; root.wirelessAdbFinished(c === 0, c === 0 ? "Connected successfully" : "Connection failed"); root.refreshAdbDevices() } }', root);
         p.running = true;
+    }
+
+    function disconnectWirelessAdb(host, port) {
+        wirelessAdbBusy = true;
+        var target = (host && port) ? (host + ":" + port) : "";
+        var cmd = target !== "" ? ["bash", "-c", "adb disconnect " + target] : ["bash", "-c", "adb disconnect"];
+        var p = Qt.createQmlObject('import Quickshell.Io; Process { command: ' + JSON.stringify(cmd) + '; onExited: (c, s) => { root.wirelessAdbBusy = false; root.wirelessAdbFinished(c === 0, c === 0 ? "Disconnected" : "Disconnect failed"); root.refreshAdbDevices() } }', root);
+        p.running = true;
+    }
+
+    function startQrPairing() {
+        qrPairSuccess = false;
+        qrImagePath = "";
+        qrPairingCode = "";
+        qrServiceName = "";
+        qrDiscoveredIp = "";
+        qrImageTimestamp = Date.now();
+        qrPairStatus = qsTr("Generating QR code...");
+        if (qrPairProc.running) {
+            qrPairProc.running = false;
+        }
+        qrPairProc.command = ["python3", Quickshell.shellPath("scripts/devices/adb_qr_pair.py")];
+        qrPairProc.running = true;
+    }
+
+    function stopQrPairing() {
+        if (qrPairProc.running) {
+            qrPairProc.running = false;
+        }
+        qrPairStatus = "";
+        qrImagePath = "";
+        qrPairingCode = "";
+        qrServiceName = "";
+        qrDiscoveredIp = "";
+        qrPairSuccess = false;
+    }
+
+    function handleQrPairEvent(msg) {
+        if (!msg || !msg.event) return;
+        qrPairEvent(msg.event, msg);
+        if (msg.event === "qr_ready") {
+            qrImageTimestamp = Date.now();
+            qrImagePath = msg.qr_path;
+            qrPairingCode = msg.code;
+            qrServiceName = msg.name;
+            qrPairStatus = qsTr("Scan this QR code on your phone");
+            qrPairSuccess = false;
+        } else if (msg.event === "discovered") {
+            qrDiscoveredIp = msg.ip;
+            qrPairStatus = qsTr("Phone detected (%1), pairing...").arg(msg.ip);
+        } else if (msg.event === "pairing") {
+            qrPairStatus = qsTr("Pairing with %1:%2...").arg(msg.ip).arg(msg.port);
+        } else if (msg.event === "paired_success") {
+            qrPairSuccess = true;
+            qrPairStatus = qsTr("Paired successfully with %1!").arg(msg.ip);
+            if (Config.options.androidConnect) {
+                Config.options.androidConnect.wirelessAdbConnectHost = msg.ip;
+            }
+            root.refreshAdbDevices();
+        } else if (msg.event === "connected") {
+            qrPairSuccess = true;
+            qrPairStatus = qsTr("Connected to %1:%2!").arg(msg.ip).arg(msg.port);
+            if (Config.options.androidConnect) {
+                Config.options.androidConnect.wirelessAdbConnectHost = msg.ip;
+                Config.options.androidConnect.wirelessAdbConnectPort = msg.port.toString();
+            }
+            root.refreshAdbDevices();
+        } else if (msg.event === "paired_ready_connect") {
+            qrPairSuccess = true;
+            qrPairStatus = qsTr("Paired! Ready to connect.");
+            if (Config.options.androidConnect) {
+                Config.options.androidConnect.wirelessAdbConnectHost = msg.ip;
+            }
+            root.refreshAdbDevices();
+        } else if (msg.event === "timeout") {
+            qrPairStatus = qsTr("Timed out. Make sure phone is on same Wi-Fi.");
+        } else if (msg.event === "error") {
+            qrPairStatus = msg.message || qsTr("Pairing error");
+        }
     }
 
     // --- 9. Helper Functions ---
@@ -426,7 +609,7 @@ Singleton {
     Timer {
         id: scrcpyStreamSafetyTimer
 
-        interval: 1500
+        interval: 6000
         repeat: false
         onTriggered: {
             if (scrcpySessionProc.running && !root.scrcpyStreamReady) {
@@ -479,15 +662,21 @@ Singleton {
         let targetRatio = bestW / bestH;
         let cropW = screenW;
         let cropH = screenH;
-        if (targetRatio <= ratio) {
-            cropH = screenH;
-            cropW = Math.round(screenH * targetRatio);
-        } else {
-            cropW = screenW;
-            cropH = Math.round(screenW / targetRatio);
+        let cropX = 0;
+        let cropY = 0;
+        if (Math.abs(ratio - targetRatio) > 0.005) {
+            if (targetRatio <= ratio) {
+                cropH = screenH;
+                cropW = Math.floor(Math.round(screenH * targetRatio) / 2) * 2;
+            } else {
+                cropW = screenW;
+                cropH = Math.floor(Math.round(screenW / targetRatio) / 2) * 2;
+            }
+            cropW = Math.floor(cropW / 2) * 2;
+            cropH = Math.floor(cropH / 2) * 2;
+            cropX = Math.floor(Math.floor((screenW - cropW) / 2) / 2) * 2;
+            cropY = Math.floor(Math.floor((screenH - cropH) / 2) / 2) * 2;
         }
-        let cropX = Math.floor((screenW - cropW) / 2);
-        let cropY = Math.floor((screenH - cropH) / 2);
 
         return {
             "outWidth": bestW,
@@ -502,20 +691,37 @@ Singleton {
 
         onExited: (exitCode, exitStatus) => {
             if (!scrcpyStopRequested && scrcpyActiveSerial !== "") {
-                var streamParams = root.getScrcpyStreamParams(adbScreenWidth, adbScreenHeight, 960);
-                scrcpySessionProc.command = [
+                var userMaxSize = (Config.options.androidConnect && Config.options.androidConnect.mirrorMaxSize) ? Config.options.androidConnect.mirrorMaxSize : 960;
+                var userFps = (Config.options.androidConnect && Config.options.androidConnect.mirrorMaxFps) ? Config.options.androidConnect.mirrorMaxFps : 60;
+                var userBitrate = (Config.options.androidConnect && Config.options.androidConnect.mirrorBitrateMbps) ? Config.options.androidConnect.mirrorBitrateMbps : 12;
+                var audioEnabled = (Config.options.androidConnect && Config.options.androidConnect.embeddedMirrorAudioEnabled);
+
+                var streamParams = root.getScrcpyStreamParams(adbScreenWidth, adbScreenHeight, userMaxSize);
+                var cmd = [
                     "stdbuf", "-oL", "-eL", "scrcpy",
                     "-s", scrcpyActiveSerial,
                     "--v4l2-sink=" + scrcpyFeedDevicePath,
                     "--no-window",
-                    "--no-audio",
+                    "--display-id=0",
                     "--stay-awake",
                     "--crop=" + streamParams.cropArg,
                     "--max-size=" + streamParams.maxSize,
-                    "--max-fps=60",
-                    "--video-bit-rate=12M",
-                    "--video-codec=h264"
+                    "--max-fps=" + userFps,
+                    "--video-bit-rate=" + userBitrate + "M",
+                    "--video-codec=h264",
+                    "--v4l2-buffer=0"
                 ];
+                if (!audioEnabled) {
+                    cmd.splice(4, 0, "--no-audio");
+                }
+                var screenOffRequested = root.physicalScreenOff;
+                if (screenOffRequested) {
+                    cmd.push("--turn-screen-off");
+                }
+                if (Config.options.androidConnect && Config.options.androidConnect.keepPhoneAwake && !root.keepAwakeActive) {
+                    root.setKeepAwake(scrcpyActiveSerial, true);
+                }
+                scrcpySessionProc.command = cmd;
                 root.scrcpyStreamReady = false;
                 scrcpySessionProc.running = true;
                 scrcpyStreamSafetyTimer.restart();
@@ -529,7 +735,7 @@ Singleton {
     Timer {
         id: streamReadyDelayTimer
 
-        interval: 400
+        interval: 800
         repeat: false
         onTriggered: {
             console.log("[AndroidConnect] Stream ready delay elapsed, activating stream");
@@ -552,6 +758,7 @@ Singleton {
             onRead: (data) => {
                 if (data.indexOf("v4l2 sink started") !== -1) {
                     console.log("[AndroidConnect] v4l2 sink started detected in stdout");
+                    scrcpyStreamSafetyTimer.stop();
                     streamReadyDelayTimer.restart();
                 }
             }
@@ -562,6 +769,7 @@ Singleton {
                 root.scrcpyLastStderr = data;
                 if (data.indexOf("v4l2 sink started") !== -1) {
                     console.log("[AndroidConnect] v4l2 sink started detected in stderr");
+                    scrcpyStreamSafetyTimer.stop();
                     streamReadyDelayTimer.restart();
                 }
             }
@@ -662,6 +870,12 @@ Singleton {
                         "cellularNetworkType": adbNetworkType || (mainDevice ? mainDevice.cellularNetworkType : "LTE"),
                         "cellularNetworkStrength": adbSignalStrength !== undefined ? adbSignalStrength : (mainDevice ? mainDevice.cellularNetworkStrength : 4)
                     };
+                    if (parsed.timeout && parsed.timeout !== "2147483647" && parsed.timeout !== "null" && parseInt(parsed.timeout) > 0) {
+                        originalScreenTimeout = parsed.timeout;
+                    }
+                    if (Config.options.androidConnect && Config.options.androidConnect.keepPhoneAwake && !keepAwakeActive) {
+                        setKeepAwake(resolvedAdbSerial(), true);
+                    }
                 } catch (e) {
                     console.error("Failed to parse adb device info json", e);
                 }
@@ -687,6 +901,39 @@ Singleton {
     }
 
     Process {
+        id: qrPairProc
+        command: ["python3", Quickshell.shellPath("scripts/devices/adb_qr_pair.py")]
+
+        stdout: SplitParser {
+            onRead: (data) => {
+                try {
+                    let lines = data.trim().split("\n");
+                    for (let l of lines) {
+                        l = l.trim();
+                        if (!l.startsWith("{")) continue;
+                        let msg = JSON.parse(l);
+                        root.handleQrPairEvent(msg);
+                    }
+                } catch (e) {
+                    console.warn("[AndroidConnect] QR pair parse error:", e);
+                }
+            }
+        }
+
+        stderr: SplitParser {
+            onRead: (data) => {
+                console.warn("[AndroidConnect] QR pair stderr:", data);
+            }
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            if (exitCode !== 0 && !root.qrPairSuccess && root.qrPairStatus !== "") {
+                root.qrPairStatus = qsTr("Pairing canceled or timed out");
+            }
+        }
+    }
+
+    Process {
         id: adbRecordProc
 
         onExited: (exitCode, exitStatus) => {
@@ -695,7 +942,8 @@ Singleton {
                 var savePath = adbRecordingPath;
                 var targetSerial = resolvedAdbSerial();
                 var cmd = "adb -s " + shellQuote(targetSerial) + " pull /sdcard/screenrecord.mp4 " + shellQuote(savePath) + " && adb -s " + shellQuote(targetSerial) + " shell rm -f /sdcard/screenrecord.mp4 && notify-send 'Android Recording' 'Saved to " + savePath + "' && xdg-open " + shellQuote(savePath) + " 2>/dev/null || true";
-                var pullProc = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmd) + ']; Component.onCompleted: running = true }', root);
+                var pullProc = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmd) + '] }', root);
+                pullProc.running = true;
             }
         }
     }

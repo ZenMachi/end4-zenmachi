@@ -163,6 +163,7 @@ Scope {
         target: "settings"
         function toggle(): void { GlobalStates.settingsOpen = !GlobalStates.settingsOpen; }
         function open(): void   { GlobalStates.settingsOpen = true; }
+        function openPage(pageName: string): void { GlobalStates.settingsPage = pageName; GlobalStates.settingsOpen = true; }
         function close(): void  { GlobalStates.settingsOpen = false; }
     }
 

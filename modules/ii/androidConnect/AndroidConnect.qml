@@ -57,7 +57,14 @@ Scope {
     }
     // scrcpy embedded mirror
     readonly property string embeddedVideoDevice: "/dev/video10"
-    readonly property string embeddedMirrorCommand: "scrcpy --no-audio --capture-orientation=@0 --max-size=960 --max-fps=60 --video-bit-rate=12M --video-codec=h264 --v4l2-buffer=0"
+    readonly property int mirrorMaxSize: (Config.options.androidConnect && Config.options.androidConnect.mirrorMaxSize) ? Config.options.androidConnect.mirrorMaxSize : 960
+    readonly property int mirrorBitrate: (Config.options.androidConnect && Config.options.androidConnect.mirrorBitrateMbps) ? Config.options.androidConnect.mirrorBitrateMbps : 12
+    readonly property int mirrorMaxFps: (Config.options.androidConnect && Config.options.androidConnect.mirrorMaxFps) ? Config.options.androidConnect.mirrorMaxFps : 60
+    readonly property bool mirrorAudio: (Config.options.androidConnect && Config.options.androidConnect.embeddedMirrorAudioEnabled) ? true : false
+    readonly property string embeddedMirrorCommand: {
+        var audioFlag = mirrorAudio ? "" : "--no-audio ";
+        return "scrcpy " + audioFlag + "--capture-orientation=@0 --max-size=" + mirrorMaxSize + " --max-fps=" + mirrorMaxFps + " --video-bit-rate=" + mirrorBitrate + "M --video-codec=h264 --v4l2-buffer=0";
+    }
     // Telemetry helpers
     readonly property int batteryValue: hasDevice && device && device.battery !== undefined && device.battery >= 0 ? device.battery : (AndroidConnect.adbBatteryLevel >= 0 ? AndroidConnect.adbBatteryLevel : -1)
     readonly property bool isCharging: hasDevice && ((device && device.isCharging) || AndroidConnect.adbIsCharging)
@@ -65,8 +72,8 @@ Scope {
     readonly property string signalText: hasDevice ? AndroidConnectUtils.getSignalStrengthText((device && device.cellularNetworkStrength !== undefined) ? device.cellularNetworkStrength : AndroidConnect.adbSignalStrength) : "--"
     readonly property string signalIcon: hasDevice ? AndroidConnectUtils.getSignalStrengthIcon((device && device.cellularNetworkStrength !== undefined) ? device.cellularNetworkStrength : AndroidConnect.adbSignalStrength) : "signal_cellular_off"
     // Panel sizing
-    readonly property real panelWidth: phoneWidth + infoColumnWidth + 80
-    readonly property real infoColumnWidth: 200
+    readonly property real panelWidth: phoneWidth + infoColumnWidth + 60
+    readonly property real infoColumnWidth: 330
     readonly property real panelHeight: phoneHeight + 140 // Header + nav buttons
     property bool isPinned: false
 
@@ -173,9 +180,10 @@ Scope {
 
             interval: 30000
             onTriggered: {
-                if (!GlobalStates.androidConnectOpen && AndroidConnect.scrcpyRunning)
+                if (!GlobalStates.androidConnectOpen && AndroidConnect.scrcpyRunning) {
                     AndroidConnect.stopScrcpySession();
-
+                    AndroidConnect.restoreDeviceScreenSettings();
+                }
             }
         }
 
@@ -325,6 +333,27 @@ Scope {
                             text: root.isPinned ? "push_pin" : "keep"
                             iconSize: Appearance.font.pixelSize.larger
                             color: root.isPinned ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colOnLayer1
+                        }
+
+                    }
+
+                    // Wireless ADB QR Code shortcut
+                    RippleButton {
+                        implicitWidth: 36
+                        implicitHeight: 36
+                        buttonRadius: Appearance.rounding.full
+                        colBackground: Appearance.colors.colLayer1
+                        onClicked: {
+                            GlobalStates.settingsPage = "Android:Wireless ADB";
+                            GlobalStates.settingsOpen = true;
+                            AndroidConnect.startQrPairing();
+                        }
+
+                        MaterialSymbol {
+                            anchors.centerIn: parent
+                            text: "qr_code_scanner"
+                            iconSize: Appearance.font.pixelSize.larger
+                            color: Appearance.colors.colOnLayer1
                         }
 
                     }
@@ -608,12 +637,12 @@ Scope {
                         // ---- Quick Action Buttons ----
                         RowLayout {
                             Layout.alignment: Qt.AlignLeft
-                            spacing: 8
+                            spacing: 5
 
                             // Screenshot
                             RippleButton {
-                                implicitWidth: 42
-                                implicitHeight: 42
+                                implicitWidth: 36
+                                implicitHeight: 36
                                 buttonRadius: Appearance.rounding.normal
                                 colBackground: Appearance.colors.colLayer1
                                 onClicked: {
@@ -626,16 +655,19 @@ Scope {
                                 MaterialSymbol {
                                     anchors.centerIn: parent
                                     text: "photo_camera"
-                                    iconSize: 20
+                                    iconSize: 18
                                     color: Appearance.colors.colOnLayer1
                                 }
 
+                                StyledToolTip {
+                                    text: qsTr("Take screenshot")
+                                }
                             }
 
                             // Screen recording
                             RippleButton {
-                                implicitWidth: 42
-                                implicitHeight: 42
+                                implicitWidth: 36
+                                implicitHeight: 36
                                 buttonRadius: Appearance.rounding.normal
                                 colBackground: AndroidConnect.adbScreenRecordingActive ? Appearance.colors.colError : Appearance.colors.colLayer1
                                 onClicked: {
@@ -651,18 +683,21 @@ Scope {
                                 MaterialSymbol {
                                     anchors.centerIn: parent
                                     text: AndroidConnect.adbScreenRecordingActive ? "stop" : "videocam"
-                                    iconSize: 20
+                                    iconSize: 18
                                     color: AndroidConnect.adbScreenRecordingActive ? Appearance.colors.colOnError : Appearance.colors.colOnLayer1
                                 }
 
+                                StyledToolTip {
+                                    text: AndroidConnect.adbScreenRecordingActive ? qsTr("Stop recording") : qsTr("Start screen recording")
+                                }
                             }
 
-                            // Keep awake
+                            // Keep awake / Always On Display (Never auto lock)
                             RippleButton {
                                 id: keepAwakeBtn
 
-                                implicitWidth: 42
-                                implicitHeight: 42
+                                implicitWidth: 36
+                                implicitHeight: 36
                                 buttonRadius: Appearance.rounding.normal
                                 colBackground: AndroidConnect.keepAwakeActive ? Appearance.colors.colPrimaryContainer : Appearance.colors.colLayer1
                                 onClicked: {
@@ -674,17 +709,46 @@ Scope {
 
                                 MaterialSymbol {
                                     anchors.centerIn: parent
-                                    text: AndroidConnect.keepAwakeActive ? "nightlight" : "dark_mode"
-                                    iconSize: 20
+                                    text: AndroidConnect.keepAwakeActive ? "alarm_on" : "nightlight"
+                                    iconSize: 18
                                     color: AndroidConnect.keepAwakeActive ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colOnLayer1
                                 }
 
+                                StyledToolTip {
+                                    text: AndroidConnect.keepAwakeActive ? qsTr("Always On Display: Active (Never locks)") : qsTr("Always On Display: Inactive (Click to keep awake)")
+                                }
+                            }
+
+                            // Turn physical phone screen off / on
+                            RippleButton {
+                                id: screenPowerBtn
+
+                                implicitWidth: 36
+                                implicitHeight: 36
+                                buttonRadius: Appearance.rounding.normal
+                                colBackground: AndroidConnect.physicalScreenOff ? Appearance.colors.colPrimaryContainer : Appearance.colors.colLayer1
+                                onClicked: {
+                                    let serial = AndroidConnect.resolvedAdbSerial();
+                                    if (serial !== "")
+                                        AndroidConnect.togglePhysicalScreen(serial);
+                                }
+
+                                MaterialSymbol {
+                                    anchors.centerIn: parent
+                                    text: AndroidConnect.physicalScreenOff ? "visibility_off" : "visibility"
+                                    iconSize: 18
+                                    color: AndroidConnect.physicalScreenOff ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colOnLayer1
+                                }
+
+                                StyledToolTip {
+                                    text: AndroidConnect.physicalScreenOff ? qsTr("Phone screen is OFF (saving power) - Click to turn ON") : qsTr("Turn physical phone screen OFF")
+                                }
                             }
 
                             // Embedded mirror toggle
                             RippleButton {
-                                implicitWidth: 42
-                                implicitHeight: 42
+                                implicitWidth: 36
+                                implicitHeight: 36
                                 buttonRadius: Appearance.rounding.normal
                                 colBackground: AndroidConnect.scrcpyRunning ? Appearance.colors.colPrimaryContainer : Appearance.colors.colLayer1
                                 onClicked: {
@@ -701,16 +765,19 @@ Scope {
                                 MaterialSymbol {
                                     anchors.centerIn: parent
                                     text: AndroidConnect.scrcpyRunning ? "screen_share" : "power_settings_new"
-                                    iconSize: 20
+                                    iconSize: 18
                                     color: AndroidConnect.scrcpyRunning ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colOnLayer1
                                 }
 
+                                StyledToolTip {
+                                    text: AndroidConnect.scrcpyRunning ? qsTr("Stop embedded mirror") : qsTr("Start embedded mirror")
+                                }
                             }
 
                             // Standalone floating window popout
                             RippleButton {
-                                implicitWidth: 42
-                                implicitHeight: 42
+                                implicitWidth: 36
+                                implicitHeight: 36
                                 buttonRadius: Appearance.rounding.normal
                                 colBackground: AndroidConnect.directScrcpyRunning ? Appearance.colors.colSecondaryContainer : Appearance.colors.colLayer1
                                 onClicked: {
@@ -720,16 +787,43 @@ Scope {
                                 MaterialSymbol {
                                     anchors.centerIn: parent
                                     text: "desktop_windows"
-                                    iconSize: 20
+                                    iconSize: 18
                                     color: AndroidConnect.directScrcpyRunning ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colOnLayer1
                                 }
 
+                                StyledToolTip {
+                                    text: qsTr("Open standalone mirror window")
+                                }
+                            }
+
+                            // QR Pairing button
+                            RippleButton {
+                                implicitWidth: 36
+                                implicitHeight: 36
+                                buttonRadius: Appearance.rounding.normal
+                                colBackground: Appearance.colors.colLayer1
+                                onClicked: {
+                                    GlobalStates.settingsPage = "Android:Wireless ADB";
+                                    GlobalStates.settingsOpen = true;
+                                    AndroidConnect.startQrPairing();
+                                }
+
+                                MaterialSymbol {
+                                    anchors.centerIn: parent
+                                    text: "qr_code_scanner"
+                                    iconSize: 18
+                                    color: Appearance.colors.colOnLayer1
+                                }
+
+                                StyledToolTip {
+                                    text: qsTr("Pair device with QR code")
+                                }
                             }
 
                             // Settings (opens settings page)
                             RippleButton {
-                                implicitWidth: 42
-                                implicitHeight: 42
+                                implicitWidth: 36
+                                implicitHeight: 36
                                 buttonRadius: Appearance.rounding.normal
                                 colBackground: Appearance.colors.colLayer1
                                 onClicked: {
@@ -740,12 +834,14 @@ Scope {
                                 MaterialSymbol {
                                     anchors.centerIn: parent
                                     text: "settings"
-                                    iconSize: 20
+                                    iconSize: 18
                                     color: Appearance.colors.colOnLayer1
                                 }
 
+                                StyledToolTip {
+                                    text: qsTr("Open Android settings")
+                                }
                             }
-
                         }
 
                     }
@@ -807,6 +903,34 @@ Scope {
 
         function toggleMirror() {
             AndroidConnect.toggleDirectScrcpy();
+        }
+
+        function toggleEmbeddedMirror() {
+            if (AndroidConnect.scrcpyRunning) {
+                AndroidConnect.stopScrcpySession();
+            } else {
+                let serial = AndroidConnect.resolvedAdbSerial();
+                if (serial !== "")
+                    AndroidConnect.launchScrcpySession(serial);
+            }
+        }
+
+        function startQrPair() {
+            GlobalStates.settingsPage = "Android:Wireless ADB";
+            GlobalStates.settingsOpen = true;
+            AndroidConnect.startQrPairing();
+        }
+
+        function stopQrPair() {
+            AndroidConnect.stopQrPairing();
+        }
+
+        function toggleKeepAwake() {
+            AndroidConnect.toggleKeepAwake();
+        }
+
+        function togglePhysicalScreen() {
+            AndroidConnect.togglePhysicalScreen();
         }
 
         target: "androidConnect"

@@ -94,12 +94,15 @@ Rectangle {
         return null;
     }
 
+    property int cameraRetryCount: 0
+    property bool captureActive: false
+
     // Dynamic Capture Graph Loader
     // Only instantiated when isVideoStreaming is true.
     // Unloads immediately when stream ends to completely free /dev/video10.
     Loader {
         id: captureLoader
-        active: phoneRoot.isVideoStreaming && phoneRoot.findScrcpyDevice() !== null
+        active: phoneRoot.captureActive && phoneRoot.isVideoStreaming && phoneRoot.findScrcpyDevice() !== null
         sourceComponent: Component {
             Item {
                 CaptureSession {
@@ -114,8 +117,36 @@ Rectangle {
                     cameraDevice: phoneRoot.findScrcpyDevice()
                     onErrorOccurred: (err, errStr) => {
                         console.warn("[PhoneDisplay Camera Error]", err, errStr);
+                        if (phoneRoot.isVideoStreaming && phoneRoot.cameraRetryCount < 4) {
+                            cameraRetryTimer.restart();
+                        }
                     }
                 }
+            }
+        }
+    }
+
+    Timer {
+        id: cameraRetryTimer
+        interval: 400
+        repeat: false
+        onTriggered: {
+            if (phoneRoot.isVideoStreaming && phoneRoot.cameraRetryCount < 4) {
+                phoneRoot.cameraRetryCount += 1;
+                console.log("[PhoneDisplay] Retrying camera connection (attempt " + phoneRoot.cameraRetryCount + "/4)...");
+                phoneRoot.captureActive = false;
+                captureReloadTimer.restart();
+            }
+        }
+    }
+
+    Timer {
+        id: captureReloadTimer
+        interval: 200
+        repeat: false
+        onTriggered: {
+            if (phoneRoot.isVideoStreaming) {
+                phoneRoot.captureActive = true;
             }
         }
     }
@@ -125,23 +156,41 @@ Rectangle {
         enabled: target !== null && target !== undefined
         function onVideoFrameChanged(frame) {
             if (!phoneRoot.mirrorFeedHasRenderedFrame) {
+                console.log("[PhoneDisplay] First video frame rendered successfully!");
                 phoneRoot.mirrorFeedHasRenderedFrame = true;
+                frameStallTimer.stop();
             }
         }
     }
 
     Timer {
-        id: frameFallbackTimer
-        interval: 800
+        id: frameStallTimer
+        interval: 2500
+        repeat: false
         running: phoneRoot.isVideoStreaming && !phoneRoot.mirrorFeedHasRenderedFrame
         onTriggered: {
-            phoneRoot.mirrorFeedHasRenderedFrame = true;
+            if (phoneRoot.isVideoStreaming && !phoneRoot.mirrorFeedHasRenderedFrame && phoneRoot.cameraRetryCount < 4) {
+                phoneRoot.cameraRetryCount += 1;
+                console.warn("[PhoneDisplay] No frames received after 2.5s, retrying camera stream (attempt " + phoneRoot.cameraRetryCount + "/4)...");
+                captureLoader.active = false;
+                captureReloadTimer.restart();
+            }
         }
     }
 
     onIsVideoStreamingChanged: {
         if (!isVideoStreaming) {
+            phoneRoot.captureActive = false;
             mirrorFeedHasRenderedFrame = false;
+            cameraRetryCount = 0;
+            cameraRetryTimer.stop();
+            captureReloadTimer.stop();
+            frameStallTimer.stop();
+        } else {
+            phoneRoot.captureActive = false;
+            mirrorFeedHasRenderedFrame = false;
+            cameraRetryCount = 0;
+            captureReloadTimer.restart();
         }
     }
 
@@ -448,12 +497,14 @@ Rectangle {
 
                     BusyIndicator {
                         Layout.alignment: Qt.AlignHCenter
-                        running: phoneRoot.isLaunching
+                        running: loadingOverlay.visible
                     }
 
                     StyledText {
                         Layout.alignment: Qt.AlignHCenter
-                        text: qsTr("Starting live display...")
+                        text: phoneRoot.cameraRetryCount > 0
+                            ? qsTr("Connecting stream (attempt %1)...").arg(phoneRoot.cameraRetryCount + 1)
+                            : qsTr("Starting live display...")
                         font.pixelSize: Math.max(11, Math.round(14 * phoneRoot.scaleFactor))
                         font.weight: Font.Bold
                         color: Appearance.colors.colOnLayer0
