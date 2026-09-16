@@ -56,6 +56,7 @@ ContentPage {
         { id: "hyprlandXkbIndicator",   name: Translation.tr("Keyboard Layout"), icon: "keyboard" },
         { id: "divisor",            name: Translation.tr("Divider"),             icon: "horizontal_distribute" },
         { id: "launcherButton",     name: Translation.tr("Launcher Button"),     icon: "search" },
+        { id: "androidConnect",     name: Translation.tr("Android Connect"),     icon: "smartphone" },
     ]
 
     function availableFor() {

@@ -843,6 +843,18 @@ Singleton {
                     property list<string> linkKeywords: ["hentai", "porn", "sukebei", "hitomi.la", "rule34", "gelbooru", "fanbox", "dlsite"]
                 }
             }
+
+            property JsonObject androidConnect: JsonObject {
+                property bool enable: true
+                property string mainDeviceId: ""
+                property bool hideBarIfNoDevice: false
+                property bool embeddedMirrorAudioEnabled: false
+                property int phoneSizePresetIndex: 1
+                property string wirelessAdbPairHost: ""
+                property string wirelessAdbPairPort: ""
+                property string wirelessAdbConnectHost: ""
+                property string wirelessAdbConnectPort: ""
+            }
         }
     }
 }

@@ -41,6 +41,7 @@ Singleton {
     property real desktopMenuX: 0
     property real desktopMenuY: 0
     property string wallpaperSelectorTarget: "wallpaper"
+    property bool androidConnectOpen: false
     property bool dropShelfOpen: false
     property real dropShelfX: 0
     property real dropShelfY: 0
@@ -56,7 +57,8 @@ Singleton {
         { displayName: Translation.tr("ScreenShot Region"),        value: "regionSelectorOpen" },
         { displayName: Translation.tr("Screen Translator"),      value: "screenTranslatorOpen" },
         { displayName: Translation.tr("On-screen Keyboard"),     value: "oskOpen" },
-        { displayName: Translation.tr("Session Menu"),           value: "sessionOpen" }
+        { displayName: Translation.tr("Session Menu"),           value: "sessionOpen" },
+        { displayName: Translation.tr("Android Connect"),        value: "androidConnectOpen" }
     ]
 
     function toggleState(name) {
