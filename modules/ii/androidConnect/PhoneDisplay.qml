@@ -165,14 +165,14 @@ Rectangle {
 
     Timer {
         id: frameStallTimer
-        interval: 2500
+        interval: 4000
         repeat: false
         running: phoneRoot.isVideoStreaming && !phoneRoot.mirrorFeedHasRenderedFrame
         onTriggered: {
             if (phoneRoot.isVideoStreaming && !phoneRoot.mirrorFeedHasRenderedFrame && phoneRoot.cameraRetryCount < 4) {
                 phoneRoot.cameraRetryCount += 1;
-                console.warn("[PhoneDisplay] No frames received after 2.5s, retrying camera stream (attempt " + phoneRoot.cameraRetryCount + "/4)...");
-                captureLoader.active = false;
+                console.warn("[PhoneDisplay] No frames received after 4s, retrying camera stream (attempt " + phoneRoot.cameraRetryCount + "/4)...");
+                phoneRoot.captureActive = false;
                 captureReloadTimer.restart();
             }
         }

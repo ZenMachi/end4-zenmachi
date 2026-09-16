@@ -142,7 +142,7 @@ Singleton {
         scrcpyStopRequested = false;
         scrcpyStreamReady = false;
         scrcpyActiveSerial = targetSerial;
-        scrcpyPreLaunchProc.command = ["bash", "-c", "pkill -f 'scrcpy.*--v4l2-sink' 2>/dev/null || true; v4l2-ctl -d " + shellQuote(scrcpyFeedDevicePath) + " -c keep_format=0 2>/dev/null || true; adb -s " + shellQuote(targetSerial) + " shell \"input keyevent 224; input keyevent 82 2>/dev/null || true\"; sleep 0.2"];
+        scrcpyPreLaunchProc.command = ["bash", "-c", "pkill -f 'scrcpy.*--v4l2-sink' 2>/dev/null || true; v4l2-ctl -d " + shellQuote(scrcpyFeedDevicePath) + " -c keep_format=1 -c sustain_framerate=1 2>/dev/null || true; adb -s " + shellQuote(targetSerial) + " shell \"cmd display power-reset 0 2>/dev/null; input keyevent 224; input keyevent 82 2>/dev/null || true\"; sleep 0.2"];
         scrcpyPreLaunchProc.running = true;
     }
 
@@ -311,7 +311,7 @@ Singleton {
             var p1 = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmd) + '] }', root);
             p1.running = true;
             if (Config.options.androidConnect && Config.options.androidConnect.turnOffScreenOnMirror && scrcpyRunning && !physicalScreenOff) {
-                setPhysicalScreenPower(targetSerial, false);
+                setPhysicalScreenOff(targetSerial, true);
             }
         } else {
             var restoreTimeout = originalScreenTimeout || "60000";
@@ -319,7 +319,7 @@ Singleton {
             var p2 = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmdRestore) + '] }', root);
             p2.running = true;
             if (physicalScreenOff) {
-                setPhysicalScreenPower(targetSerial, true);
+                setPhysicalScreenOff(targetSerial, false);
             }
         }
     }
@@ -328,35 +328,29 @@ Singleton {
         setKeepAwake(serial, !keepAwakeActive);
     }
 
-    function setPhysicalScreenPower(serial, powerOn) {
+    function setPhysicalScreenOff(serial, off) {
         var targetSerial = serial || resolvedAdbSerial();
         if (!targetSerial || targetSerial === "")
             return;
 
-        if (powerOn) {
-            physicalScreenOff = false;
-            var cmdOn = "adb -s " + shellQuote(targetSerial) + " shell \"cmd display power-reset 0; input keyevent KEYCODE_WAKEUP\"";
+        physicalScreenOff = off;
+        if (!off) {
+            var cmdOn = "adb -s " + shellQuote(targetSerial) + " shell \"cmd display power-reset 0 2>/dev/null; input keyevent KEYCODE_WAKEUP 2>/dev/null\"";
             var pOn = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmdOn) + '] }', root);
             pOn.running = true;
-            if (scrcpyRunning) {
-                var currentSerialOn = scrcpyActiveSerial || targetSerial;
-                restartScrcpySession(currentSerialOn);
-            }
-        } else {
-            physicalScreenOff = true;
-            if (scrcpyRunning) {
-                var currentSerialOff = scrcpyActiveSerial || targetSerial;
-                restartScrcpySession(currentSerialOff);
-            } else {
-                var cmdOff = "adb -s " + shellQuote(targetSerial) + " shell \"cmd display power-off 0\"";
-                var pOff = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmdOff) + '] }', root);
-                pOff.running = true;
-            }
+        }
+        if (scrcpyRunning) {
+            var currentSerial = scrcpyActiveSerial || targetSerial;
+            restartScrcpySession(currentSerial);
         }
     }
 
+    function setPhysicalScreenPower(serial, powerOn) {
+        setPhysicalScreenOff(serial, !powerOn);
+    }
+
     function togglePhysicalScreen(serial) {
-        setPhysicalScreenPower(serial, physicalScreenOff);
+        setPhysicalScreenOff(serial, !physicalScreenOff);
     }
 
     function restoreDeviceScreenSettings(serial) {
@@ -366,16 +360,16 @@ Singleton {
 
         if (physicalScreenOff) {
             physicalScreenOff = false;
-            var cmdReset = "adb -s " + shellQuote(targetSerial) + " shell \"cmd display power-reset 0; input keyevent KEYCODE_WAKEUP\"";
+            var cmdReset = "adb -s " + shellQuote(targetSerial) + " shell \"cmd display power-reset 0 2>/dev/null; input keyevent KEYCODE_WAKEUP 2>/dev/null\"";
             var pR = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmdReset) + '] }', root);
             pR.running = true;
         }
         if (keepAwakeActive && !(Config.options.androidConnect && Config.options.androidConnect.keepPhoneAwake)) {
             keepAwakeActive = false;
             var restoreTimeout = originalScreenTimeout || "60000";
-            var cmdT = "adb -s " + shellQuote(targetSerial) + " shell \"settings put system screen_off_timeout " + restoreTimeout + "; svc power stayon false\"";
-            var pT = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmdT) + '] }', root);
-            pT.running = true;
+            var cmdRestore = "adb -s " + shellQuote(targetSerial) + " shell \"settings put system screen_off_timeout " + restoreTimeout + "; svc power stayon false\"";
+            var pK = Qt.createQmlObject('import Quickshell.Io; Process { command: ["bash", "-c", ' + JSON.stringify(cmdRestore) + '] }', root);
+            pK.running = true;
         }
     }
 
@@ -712,7 +706,8 @@ Singleton {
                     "--max-fps=" + userFps,
                     "--video-bit-rate=" + userBitrate + "M",
                     "--video-codec=h264",
-                    "--v4l2-buffer=0"
+                    "--v4l2-buffer=0",
+                    "--video-codec-options=repeat-previous-frame-after:long=100000"
                 ];
                 if (!audioEnabled) {
                     cmd.splice(4, 0, "--no-audio");
