@@ -56,18 +56,28 @@ ContentPage {
         { id: "hyprlandXkbIndicator",   name: Translation.tr("Keyboard Layout"), icon: "keyboard" },
         { id: "divisor",            name: Translation.tr("Divider"),             icon: "horizontal_distribute" },
         { id: "launcherButton",     name: Translation.tr("Launcher Button"),     icon: "search" },
+        { id: "dynamicIsland",     name: Translation.tr("Dynamic Island"),     icon: "nest_wifi_pro" },
         { id: "androidConnect",     name: Translation.tr("Android Connect"),     icon: "smartphone" },
     ]
 
-    function availableFor() {
+    function availableFor(section) {
         let used = [
             ...Config.options.bar.layouts.leftLayout,
             ...Config.options.bar.layouts.middleLayout,
             ...Config.options.bar.layouts.rightLayout
         ]
+        if (section === "middle" && Config.options.bar.layouts.middleLayout.length > 0) {
+            return Config.options.bar.layouts.middleLayout.includes("dynamicIsland") ? [] : allWidgets.filter(w => {
+                if (w.id === "dynamicIsland") return false
+                if (w.id === "divisor" && Config.options.bar.borderless !== "transparent") return false
+                const multipleAllowed = ["visualizer", "divisor"]
+                return !used.includes(w.id) || multipleAllowed.includes(w.id)
+            })
+        }
         const multipleAllowed = ["visualizer", "divisor"]
         return allWidgets.filter(w => {
             if (w.id === "divisor" && Config.options.bar.borderless !== "transparent") return false
+            if (w.id === "dynamicIsland" && (Config.options.bar.vertical || section !== "middle")) return false
             return !used.includes(w.id) || multipleAllowed.includes(w.id)
         })
     }
@@ -178,7 +188,7 @@ ContentPage {
                 LayoutSection {
                     sectionTitle: Config.options.bar.vertical ? Translation.tr("Top") : Translation.tr("Left")
                     layout: Config.options.bar.layouts.leftLayout
-                    availableWidgets: page.availableFor()
+                    availableWidgets: page.availableFor("left")
                     getWidgetName: page.getWidgetName
                     onUpdate: list => Config.options.bar.layouts.leftLayout = list
                 }
@@ -186,7 +196,7 @@ ContentPage {
                 LayoutSection {
                     sectionTitle: Translation.tr("Center")
                     layout: Config.options.bar.layouts.middleLayout
-                    availableWidgets: page.availableFor()
+                    availableWidgets: page.availableFor("middle")
                     getWidgetName: page.getWidgetName
                     onUpdate: list => Config.options.bar.layouts.middleLayout = list
                 }
@@ -194,7 +204,7 @@ ContentPage {
                 LayoutSection {
                     sectionTitle: Config.options.bar.vertical ? Translation.tr("Bottom") : Translation.tr("Right")
                     layout: Config.options.bar.layouts.rightLayout
-                    availableWidgets: page.availableFor()
+                    availableWidgets: page.availableFor("right")
                     getWidgetName: page.getWidgetName
                     onUpdate: list => Config.options.bar.layouts.rightLayout = list
                 }
@@ -230,7 +240,8 @@ ContentPage {
                         { displayName: Translation.tr("Hug"),     icon: "line_curve", value: 0 },
                         { displayName: Translation.tr("Float"),   icon: "view_day",   value: 1 },
                         { displayName: Translation.tr("Islands"), icon: "crop_3_2",   value: 2 },
-                        { displayName: Translation.tr("M3"), icon: "interests",   value: 3 }
+                        { displayName: Translation.tr("M3"), icon: "interests",   value: 3 },
+                        { displayName: Translation.tr("Panel"), icon: "toolbar",   value: 4 }
                     ]
                 }
                 ConfigSelectionArray {
@@ -274,6 +285,13 @@ ContentPage {
                         ]
                     }
                 }
+                ConfigSwitch {
+                    buttonIcon: "expand"
+                    enabled: Config.options.bar.showFrame
+                    text: Translation.tr("Overlap windows when center-only")
+                    checked: Config.options.bar.centerOnlyReserveFrame
+                    onCheckedChanged: { Config.options.bar.centerOnlyReserveFrame = checked; }
+                }
                 ConfigRow {
                     ConfigSwitch {
                         buttonIcon: "panorama_wide_angle"
@@ -316,6 +334,63 @@ ContentPage {
                     currentValue: Config.options.bar.frameColor
                     onSelected: newValue => {
                         Config.options.bar.frameColor = newValue
+                    }
+                }
+            }
+        }
+
+        ContentSection {
+            icon: "nest_wifi_pro"
+            shape: MaterialShape.Shape.Cookie4Sided
+            title: Translation.tr("Dynamic Island")
+
+            GroupedList {
+                ConfigSelectionArray {
+                    text: Translation.tr("Left widget")
+                    icon: "right_panel_open"
+                    currentValue: Config.options.bar.dynamicIsland.leftWidget
+                    onSelected: newValue => { Config.options.bar.dynamicIsland.leftWidget = newValue; }
+                    options: [
+                        { displayName: Translation.tr(""),    icon: "block",        value: "none" },
+                        { displayName: Translation.tr("Clock"),   icon: "schedule",     value: "clockWidget" },
+                        { displayName: Translation.tr("Weather"), icon: "partly_cloudy_day", value: "weatherBar" },
+                        { displayName: Translation.tr("Updates"), icon: "update",       value: "updatesCount" }
+                    ]
+                }
+                ConfigSelectionArray {
+                    text: Translation.tr("Right widget")
+                    icon: "left_panel_open"
+                    currentValue: Config.options.bar.dynamicIsland.rightWidget
+                    onSelected: newValue => { Config.options.bar.dynamicIsland.rightWidget = newValue; }
+                    options: [
+                        { displayName: Translation.tr(""),         icon: "block",        value: "none" },
+                        { displayName: Translation.tr("System icons"), icon: "settings",     value: "systemIcons" },
+                        { displayName: Translation.tr("Tray"),  icon: "apps",         value: "sysTray" },
+                        { displayName: Translation.tr("Util buttons"), icon: "widgets",   value: "utilButtons" }
+                    ]
+                }
+            }
+
+            ContentSubsection {
+                Layout.topMargin: 10
+                title: Translation.tr("Media")
+                GroupedList {
+                    ConfigSelectionArray {
+                        text: Translation.tr("Visualizer style")
+                        icon: "graphic_eq"
+                        currentValue: Config.options.bar.dynamicIsland.visualizerStyle
+                        onSelected: newValue => { Config.options.bar.dynamicIsland.visualizerStyle = newValue; }
+                        options: [
+                            { displayName: Translation.tr(""),      icon: "block",       value: "none" },
+                            { displayName: Translation.tr("Dots"),  icon: "steppers",     value: "dots" },
+                            { displayName: Translation.tr("Wave"),  icon: "ssid_chart",   value: "wave" }
+                        ]
+                    }
+                    ConfigSwitch {
+                        buttonIcon: "play_circle"
+                        text: Translation.tr("Show media controls")
+                        checked: Config.options.bar.dynamicIsland.showMediaControls
+                        onCheckedChanged: { Config.options.bar.dynamicIsland.showMediaControls = checked; }
                     }
                 }
             }
@@ -678,9 +753,15 @@ ContentPage {
             icon: "tooltip"; title: Translation.tr("Tooltips")
             GroupedList {
                 ConfigSwitch {
+                    buttonIcon: "visibility"; text: Translation.tr("Enable")
+                    checked: Config.options.bar.tooltips.enable
+                    onCheckedChanged: { Config.options.bar.tooltips.enable = checked; }
+                }
+                ConfigSwitch {
                     buttonIcon: "ads_click"; text: Translation.tr("Click to show")
                     checked: Config.options.bar.tooltips.clickToShow
                     onCheckedChanged: { Config.options.bar.tooltips.clickToShow = checked; }
+                    enabled: Config.options.bar.tooltips.enable
                 }
             }
         }
