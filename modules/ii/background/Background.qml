@@ -181,15 +181,6 @@ Variants {
         }
 
         Connections {
-            target: Config
-            function onReadyChanged() {
-                if (!Config.ready) return
-                bgRoot.setCenteredProgress(GlobalStates.screenLocked ? 0 : (bgRoot.centeredOnlyWhenLocked ? 1 : 0))
-                bgRoot.centeredAnimationReady = true
-            }
-        }
-
-        Connections {
             target: GlobalStates
             function onScreenLockedChanged() {
                 if (!GlobalStates.screenLocked) {
@@ -215,8 +206,8 @@ Variants {
                 mipmap: true
                 smooth: true
                 layer.enabled: true
-                visible: !bgRoot.videoRevealed
-                opacity: bgRoot.videoRevealed ? 0 : 1
+                visible: !bgRoot.videoRevealed && (bgRoot.transitionProgress < 1.0 || bgRoot.transitionPending)
+                opacity: bgRoot.videoRevealed ? 0 : (bgRoot.transitionProgress < 1.0 ? 1 : 0)
             }
 
             StyledImage {

@@ -225,18 +225,17 @@ Item {
 
         StyledImage {
             id: centeredWallpaperImage
-            width: root.width
-            height: root.height
+            width: (root.centeredOnlyWhenLocked ? root.width : centeredWallpaperShapeItem.width)
+            height: (root.centeredOnlyWhenLocked ? root.height : centeredWallpaperShapeItem.height)
             anchors.centerIn: parent
             source: root.wallpaperPath
             fillMode: Image.PreserveAspectCrop
             cache: false
             mipmap: true
             antialiasing: true
-            sourceSize.width: root.width
-            sourceSize.height: root.height
+            sourceSize.width: Math.max(root.width, root.height)
             property real imageZoom: 1
-            scale: root.centeredImageScale() * (1 / centeredWallpaperShapeItem.shapeZoom) * imageZoom
+            scale: (root.centeredOnlyWhenLocked ? root.centeredImageScale() : 1.0) * (1 / centeredWallpaperShapeItem.shapeZoom) * imageZoom
         }
 
         MouseArea {
