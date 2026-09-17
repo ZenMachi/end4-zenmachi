@@ -385,6 +385,8 @@ Variants {
                         && (centeredWallpaper.centeredProgress < 1 || centeredWallpaper.centeredAnimating)
                     acceptedButtons: Qt.LeftButton
                     onClicked: GlobalStates.centeredWallpaperThumpRequested()
+                }
+
                 WidgetsLoader {
                     screen: bgRoot.screen
                     wallpaperItem: wallpaper
