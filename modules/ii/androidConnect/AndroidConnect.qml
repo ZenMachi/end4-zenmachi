@@ -83,6 +83,7 @@ Scope {
     readonly property real infoColumnWidth: 330
     readonly property real panelHeight: phoneHeight + 140 // Header + nav buttons
     property bool isPinned: false
+    property bool userStoppedMirror: false
 
     // Bar positioning metrics
     readonly property bool barVertical: Config.options.bar.vertical
@@ -148,10 +149,13 @@ Scope {
                 }
 
                 closeStopTimer.stop();
+                root.userStoppedMirror = false;
+                AndroidConnect.scrcpyStopRequested = false;
+
                 // Refresh devices
                 AndroidConnect.refreshDevices();
                 AndroidConnect.refreshAdbDevices();
-                // Auto-start embedded mirror if device is ready
+                // Auto-start embedded mirror if device is ready and user hasn't stopped it
                 if (root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning)
                     autoStartTimer.restart();
 
@@ -173,7 +177,7 @@ Scope {
 
             interval: 200
             onTriggered: {
-                if (root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning) {
+                if (root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning && !root.userStoppedMirror) {
                     let serial = AndroidConnect.resolvedAdbSerial();
                     if (serial !== "")
                         AndroidConnect.launchScrcpySession(serial);
@@ -207,12 +211,12 @@ Scope {
         Connections {
             target: AndroidConnect
             function onAnyDevicesConnectedChanged() {
-                if (GlobalStates.androidConnectOpen && root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning) {
+                if (GlobalStates.androidConnectOpen && root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning && !root.userStoppedMirror) {
                     autoStartTimer.restart();
                 }
             }
             function onAdbConnectedSerialsChanged() {
-                if (GlobalStates.androidConnectOpen && root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning) {
+                if (GlobalStates.androidConnectOpen && root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning && !root.userStoppedMirror) {
                     autoStartTimer.restart();
                 }
             }
@@ -402,6 +406,7 @@ Scope {
                                             ? Appearance.colors.colPrimaryContainer
                                             : (hovered ? Appearance.colors.colLayer2 : "transparent")
                                         onClicked: {
+                                            root.userStoppedMirror = false;
                                             AndroidConnect.selectDevice(modelData.serial);
                                             deviceMenuPopup.close();
                                         }
@@ -552,12 +557,14 @@ Scope {
                             Layout.preferredWidth: root.phoneWidth
                             Layout.preferredHeight: root.phoneHeight
                             onStartMirrorRequested: {
+                                root.userStoppedMirror = false;
                                 let serial = AndroidConnect.resolvedAdbSerial();
                                 if (serial !== "")
                                     AndroidConnect.launchScrcpySession(serial);
 
                             }
                             onStopMirrorRequested: {
+                                root.userStoppedMirror = true;
                                 AndroidConnect.stopScrcpySession();
                             }
                             onTapRequested: (x, y) => {
@@ -911,8 +918,10 @@ Scope {
                                 colBackground: AndroidConnect.scrcpyRunning ? Appearance.colors.colPrimaryContainer : Appearance.colors.colLayer1
                                 onClicked: {
                                     if (AndroidConnect.scrcpyRunning) {
+                                        root.userStoppedMirror = true;
                                         AndroidConnect.stopScrcpySession();
                                     } else {
+                                        root.userStoppedMirror = false;
                                         let serial = AndroidConnect.resolvedAdbSerial();
                                         if (serial !== "")
                                             AndroidConnect.launchScrcpySession(serial);
@@ -1031,10 +1040,18 @@ Scope {
     IpcHandler {
         function toggle() {
             GlobalStates.androidConnectOpen = !GlobalStates.androidConnectOpen;
+            if (GlobalStates.androidConnectOpen) {
+                root.userStoppedMirror = false;
+                if (root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning)
+                    autoStartTimer.restart();
+            }
         }
 
         function open() {
+            root.userStoppedMirror = false;
             GlobalStates.androidConnectOpen = true;
+            if (root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning)
+                autoStartTimer.restart();
         }
 
         function pin() {
@@ -1064,17 +1081,21 @@ Scope {
         }
 
         function selectDevice(serial: string) {
+            root.userStoppedMirror = false;
             AndroidConnect.selectDevice(serial);
         }
 
         function restartEmbeddedMirror() {
+            root.userStoppedMirror = false;
             AndroidConnect.restartScrcpySession();
         }
 
         function toggleEmbeddedMirror() {
             if (AndroidConnect.scrcpyRunning) {
+                root.userStoppedMirror = true;
                 AndroidConnect.stopScrcpySession();
             } else {
+                root.userStoppedMirror = false;
                 let serial = AndroidConnect.resolvedAdbSerial();
                 if (serial !== "")
                     AndroidConnect.launchScrcpySession(serial);

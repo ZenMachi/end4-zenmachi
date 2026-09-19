@@ -164,7 +164,14 @@ Singleton {
         scrcpyStopRequested = false;
         scrcpyStreamReady = false;
         scrcpyActiveSerial = targetSerial;
-        scrcpyPreLaunchProc.command = ["bash", "-c", "pkill -f '[s]crcpy.*--v4l2-sink' 2>/dev/null || true; v4l2-ctl -d " + shellQuote(scrcpyFeedDevicePath) + " -c keep_format=1 -c sustain_framerate=1 2>/dev/null || true; adb -s " + shellQuote(targetSerial) + " shell \"cmd display power-reset 0 2>/dev/null; input keyevent 224; input keyevent 82 2>/dev/null || true\"; SIZE=$(adb -s " + shellQuote(targetSerial) + " shell wm size 2>/dev/null | grep -o '[0-9]\\+x[0-9]\\+' | head -1); echo \"SIZE:$SIZE\"; sleep 0.2"];
+        scrcpyPreLaunchProc.command = [
+            "bash", "-c",
+            "pkill -f '[s]crcpy.*--v4l2-sink' 2>/dev/null || true; " +
+            "v4l2-ctl -d " + shellQuote(scrcpyFeedDevicePath) + " -c keep_format=0 2>/dev/null || true; " +
+            "adb -s " + shellQuote(targetSerial) + " shell \"cmd display power-reset 0 2>/dev/null; input keyevent 224; input keyevent 82 2>/dev/null || true\"; " +
+            "SIZE=$(adb -s " + shellQuote(targetSerial) + " shell wm size 2>/dev/null | grep -o '[0-9]\\+x[0-9]\\+' | head -1); " +
+            "echo \"SIZE:$SIZE\"; sleep 0.1"
+        ];
         scrcpyPreLaunchProc.running = true;
     }
 
@@ -552,6 +559,23 @@ Singleton {
     Component.onCompleted: {
         checkDaemon();
         refreshAdbDevices();
+        initV4l2Device();
+    }
+
+    function initV4l2Device() {
+        v4l2InitProc.running = true;
+    }
+
+    Process {
+        id: v4l2InitProc
+        command: [
+            "bash", "-c",
+            "if [ -e " + shellQuote(scrcpyFeedDevicePath) + " ]; then " +
+            "v4l2-ctl -d " + shellQuote(scrcpyFeedDevicePath) + " -c keep_format=0 2>/dev/null || true; " +
+            "v4l2-ctl -d " + shellQuote(scrcpyFeedDevicePath) + " --set-fmt-video=width=432,height=960,pixelformat=YU12 2>/dev/null || true; " +
+            "v4l2-ctl -d " + shellQuote(scrcpyFeedDevicePath) + " -c sustain_framerate=1 -c keep_format=1 2>/dev/null || true; " +
+            "fi"
+        ]
     }
 
     Process {
@@ -752,8 +776,12 @@ Singleton {
                 var audioEnabled = (Config.options.androidConnect && Config.options.androidConnect.embeddedMirrorAudioEnabled);
 
                 var streamParams = root.getScrcpyStreamParams(adbScreenWidth, adbScreenHeight, userMaxSize);
-                var cmd = [
-                    "stdbuf", "-oL", "-eL", "scrcpy",
+                var prepCmd = "v4l2-ctl -d " + shellQuote(scrcpyFeedDevicePath) + " -c keep_format=0 2>/dev/null || true; " +
+                              "v4l2-ctl -d " + shellQuote(scrcpyFeedDevicePath) + " --set-fmt-video=width=" + streamParams.outWidth + ",height=" + streamParams.outHeight + ",pixelformat=YU12 2>/dev/null || true; " +
+                              "v4l2-ctl -d " + shellQuote(scrcpyFeedDevicePath) + " -c sustain_framerate=1 -c keep_format=1 2>/dev/null || true; " +
+                              'exec stdbuf -oL -eL scrcpy "$@"';
+
+                var scrcpyArgs = [
                     "-s", scrcpyActiveSerial,
                     "--v4l2-sink=" + scrcpyFeedDevicePath,
                     "--no-window",
@@ -768,16 +796,16 @@ Singleton {
                     "--video-codec-options=repeat-previous-frame-after:long=100000"
                 ];
                 if (!audioEnabled) {
-                    cmd.splice(4, 0, "--no-audio");
+                    scrcpyArgs.splice(2, 0, "--no-audio");
                 }
                 var screenOffRequested = root.physicalScreenOff;
                 if (screenOffRequested) {
-                    cmd.push("--turn-screen-off");
+                    scrcpyArgs.push("--turn-screen-off");
                 }
                 if (Config.options.androidConnect && Config.options.androidConnect.keepPhoneAwake && !root.keepAwakeActive) {
                     root.setKeepAwake(scrcpyActiveSerial, true);
                 }
-                scrcpySessionProc.command = cmd;
+                scrcpySessionProc.command = ["bash", "-c", prepCmd, "--"].concat(scrcpyArgs);
                 root.scrcpyStreamReady = false;
                 scrcpySessionProc.running = true;
                 scrcpyStreamSafetyTimer.restart();

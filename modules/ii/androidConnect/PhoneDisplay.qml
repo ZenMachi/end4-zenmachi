@@ -244,16 +244,17 @@ Rectangle {
 
                 anchors.fill: parent
                 fillMode: VideoOutput.Stretch
-                visible: phoneRoot.isVideoStreaming
+                visible: phoneRoot.isVideoStreaming && phoneRoot.mirrorFeedHasRenderedFrame
                 z: 1
             }
 
-            // Idle Screen (Shown when not streaming)
+            // Idle Screen (Shown when not streaming or waiting for first frame)
             Rectangle {
                 id: idleScreen
 
                 anchors.fill: parent
-                visible: !phoneRoot.isVideoStreaming
+                visible: !phoneRoot.isVideoStreaming || !phoneRoot.mirrorFeedHasRenderedFrame
+                color: Appearance.colors.colLayer0
                 z: 2
 
                 // Top Android Status Bar
