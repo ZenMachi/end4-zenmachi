@@ -43,6 +43,8 @@ Singleton {
     property real desktopMenuY: 0
     property string wallpaperSelectorTarget: "wallpaper"
     property bool androidConnectOpen: false
+    property real androidConnectTriggerX: -1
+    property real androidConnectTriggerY: -1
     property bool dropShelfOpen: false
     property real dropShelfX: 0
     property real dropShelfY: 0

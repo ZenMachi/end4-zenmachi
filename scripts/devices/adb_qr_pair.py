@@ -175,8 +175,7 @@ def main():
         else:
             err_msg = pair_res.stderr.strip() or pair_res.stdout.strip() or "Pairing rejected"
             log_event("error", message=f"Pairing failed: {err_msg}")
-            cleanup()
-            sys.exit(1)
+            # Do not exit, try connecting anyway in case it was already paired
     except Exception as e:
         log_event("error", message=f"adb pair error: {e}")
         cleanup()

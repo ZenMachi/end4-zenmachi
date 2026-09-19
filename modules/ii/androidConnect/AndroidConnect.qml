@@ -84,6 +84,11 @@ Scope {
     readonly property real panelHeight: phoneHeight + 140 // Header + nav buttons
     property bool isPinned: false
     property bool userStoppedMirror: false
+    property bool hasCustomPosition: false
+    property real customX: 0
+    property real customY: 0
+    property real lastTriggerX: -1
+    property real lastTriggerY: -1
 
     // Bar positioning metrics
     readonly property bool barVertical: Config.options.bar.vertical
@@ -95,22 +100,36 @@ Scope {
     readonly property real barThickness: barVertical ? Appearance.sizes.verticalBarWidth : Appearance.sizes.barHeight
 
     readonly property real defaultDialogX: {
-        if (barEdge === "left") {
-            return barThickness + barGap + 8;
-        } else if (barEdge === "right") {
-            return panelWindow.width - dialogWindow.width - barThickness - barGap - 8;
+        if (barVertical) {
+            if (!Config.options.bar.bottom) {
+                return Appearance.sizes.verticalBarWidth + 24;
+            } else {
+                return panelWindow.width - dialogWindow.width - Appearance.sizes.verticalBarWidth - 24;
+            }
         } else {
-            return Math.max(16, (panelWindow.width - dialogWindow.width) / 2);
+            if (GlobalStates.androidConnectTriggerX >= 0) {
+                let xPos = GlobalStates.androidConnectTriggerX - (dialogWindow.width / 2);
+                return Math.max(16, Math.min(xPos, panelWindow.width - dialogWindow.width - 16));
+            } else {
+                return Math.max(16, (panelWindow.width - dialogWindow.width) / 2);
+            }
         }
     }
 
     readonly property real defaultDialogY: {
-        if (barEdge === "top") {
-            return barThickness + barGap + 8;
-        } else if (barEdge === "bottom") {
-            return panelWindow.height - dialogWindow.height - barThickness - barGap - 8;
+        if (barVertical) {
+            if (GlobalStates.androidConnectTriggerY >= 0) {
+                let yPos = GlobalStates.androidConnectTriggerY - (dialogWindow.height / 2);
+                return Math.max(16, Math.min(yPos, panelWindow.height - dialogWindow.height - 16));
+            } else {
+                return Math.max(16, (panelWindow.height - dialogWindow.height) / 2);
+            }
         } else {
-            return Math.max(16, (panelWindow.height - dialogWindow.height) / 2);
+            if (barEdge === "top") {
+                return barThickness + barGap + 8;
+            } else {
+                return panelWindow.height - dialogWindow.height - barThickness - barGap - 8;
+            }
         }
     }
 
@@ -144,12 +163,21 @@ Scope {
         onVisibleChanged: {
             if (visible) {
                 if (!root.isPinned) {
-                    root.resetDialogPosition();
+                    if (GlobalStates.androidConnectTriggerX !== root.lastTriggerX || GlobalStates.androidConnectTriggerY !== root.lastTriggerY) {
+                        root.hasCustomPosition = false;
+                        root.lastTriggerX = GlobalStates.androidConnectTriggerX;
+                        root.lastTriggerY = GlobalStates.androidConnectTriggerY;
+                    }
+                    if (root.hasCustomPosition) {
+                        dialogWindow.x = root.customX;
+                        dialogWindow.y = root.customY;
+                    } else {
+                        root.resetDialogPosition();
+                    }
                     GlobalFocusGrab.addDismissable(panelWindow);
                 }
 
                 closeStopTimer.stop();
-                root.userStoppedMirror = false;
                 AndroidConnect.scrcpyStopRequested = false;
 
                 // Refresh devices
@@ -286,7 +314,17 @@ Scope {
                     drag.maximumX: Math.max(8, panelWindow.width - dialogWindow.width - 8)
                     drag.minimumY: 8
                     drag.maximumY: Math.max(8, panelWindow.height - dialogWindow.height - 8)
-                    onDoubleClicked: root.resetDialogPosition()
+                    onDoubleClicked: {
+                        root.hasCustomPosition = false;
+                        root.resetDialogPosition();
+                    }
+                    onPositionChanged: {
+                        if (drag.active) {
+                            root.hasCustomPosition = true;
+                            root.customX = dialogWindow.x;
+                            root.customY = dialogWindow.y;
+                        }
+                    }
                 }
 
             }
@@ -378,7 +416,7 @@ Scope {
                                 NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 150; easing.type: Easing.OutCubic }
                             }
                             background: Rectangle {
-                                color: Appearance.colors.colLayer1
+                                color: Appearance.colors.colLayer1Base
                                 border.width: 1
                                 border.color: Appearance.colors.colLayer0Border
                                 radius: Appearance.rounding.normal
@@ -406,7 +444,6 @@ Scope {
                                             ? Appearance.colors.colPrimaryContainer
                                             : (hovered ? Appearance.colors.colLayer2 : "transparent")
                                         onClicked: {
-                                            root.userStoppedMirror = false;
                                             AndroidConnect.selectDevice(modelData.serial);
                                             deviceMenuPopup.close();
                                         }
@@ -1041,16 +1078,14 @@ Scope {
         function toggle() {
             GlobalStates.androidConnectOpen = !GlobalStates.androidConnectOpen;
             if (GlobalStates.androidConnectOpen) {
-                root.userStoppedMirror = false;
-                if (root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning)
+                if (root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning && !root.userStoppedMirror)
                     autoStartTimer.restart();
             }
         }
 
         function open() {
-            root.userStoppedMirror = false;
             GlobalStates.androidConnectOpen = true;
-            if (root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning)
+            if (root.hasDevice && !AndroidConnect.scrcpyRunning && !AndroidConnect.scrcpyLaunching && !AndroidConnect.directScrcpyRunning && !root.userStoppedMirror)
                 autoStartTimer.restart();
         }
 
@@ -1081,7 +1116,6 @@ Scope {
         }
 
         function selectDevice(serial: string) {
-            root.userStoppedMirror = false;
             AndroidConnect.selectDevice(serial);
         }
 

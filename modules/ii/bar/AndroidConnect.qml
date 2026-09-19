@@ -33,6 +33,9 @@ MouseArea {
 
     onClicked: mouse => {
         if (mouse.button === Qt.LeftButton) {
+            let globalPos = mapToItem(null, width / 2, height / 2);
+            GlobalStates.androidConnectTriggerX = globalPos.x;
+            GlobalStates.androidConnectTriggerY = globalPos.y;
             GlobalStates.androidConnectOpen = !GlobalStates.androidConnectOpen
         }
     }
