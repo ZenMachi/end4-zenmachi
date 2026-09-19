@@ -454,6 +454,16 @@ Singleton {
         p.running = true;
     }
 
+    Timer {
+        id: qrRestartTimer
+        interval: 150
+        repeat: false
+        onTriggered: {
+            qrPairProc.command = ["python3", Quickshell.shellPath("scripts/devices/adb_qr_pair.py")];
+            qrPairProc.running = true;
+        }
+    }
+
     function startQrPairing() {
         qrPairSuccess = false;
         qrImagePath = "";
@@ -464,12 +474,15 @@ Singleton {
         qrPairStatus = qsTr("Generating QR code...");
         if (qrPairProc.running) {
             qrPairProc.running = false;
+            qrRestartTimer.restart();
+        } else {
+            qrPairProc.command = ["python3", Quickshell.shellPath("scripts/devices/adb_qr_pair.py")];
+            qrPairProc.running = true;
         }
-        qrPairProc.command = ["python3", Quickshell.shellPath("scripts/devices/adb_qr_pair.py")];
-        qrPairProc.running = true;
     }
 
     function stopQrPairing() {
+        qrRestartTimer.stop();
         if (qrPairProc.running) {
             qrPairProc.running = false;
         }
@@ -491,6 +504,10 @@ Singleton {
             qrServiceName = msg.name;
             qrPairStatus = qsTr("Scan this QR code on your phone");
             qrPairSuccess = false;
+        } else if (msg.event === "waiting") {
+            if (!qrDiscoveredIp && !qrPairSuccess) {
+                qrPairStatus = qsTr("Waiting for phone to scan... (%1s)").arg(msg.remaining);
+            }
         } else if (msg.event === "discovered") {
             qrDiscoveredIp = msg.ip;
             qrPairStatus = qsTr("Phone detected (%1), pairing...").arg(msg.ip);
@@ -1057,7 +1074,7 @@ Singleton {
         }
 
         onExited: (exitCode, exitStatus) => {
-            if (exitCode !== 0 && !root.qrPairSuccess && root.qrPairStatus !== "") {
+            if (exitCode !== 0 && !root.qrPairSuccess && root.qrPairStatus !== "" && !qrRestartTimer.running) {
                 root.qrPairStatus = qsTr("Pairing canceled or timed out");
             }
         }
